@@ -1,0 +1,708 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>shellydash — property climate</title>
+<style>
+  /* ============ distbtop layout language ============ */
+  :root {
+    --bg: #0d1117; --panel: #161b22; --panel2: #1c2330; --edge: #2b3444;
+    --fg: #e6edf3; --dim: #8b98a9; --faint: #7d8a9c; --accent: #58a6ff;
+    --green: #3fb950; --yellow: #d29922; --red: #f85149;
+    --tcol: #e8a33d; --hcol: #5aa9e6;          /* env-explorer metric colors */
+    --up: #d9a13b; --dn: #5aa9e6;              /* env-explorer delta colors */
+    --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+    --headh: 60px;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font-family: var(--mono); font-size: 13px; line-height: 1.35;
+  }
+  header {
+    display: flex; align-items: center; gap: 20px; flex-wrap: wrap;
+    padding: 12px 18px; border-bottom: 1px solid var(--edge); background: var(--panel);
+    position: sticky; top: 0; z-index: 50; min-height: var(--headh);
+  }
+  header h1 { font-size: 16px; margin: 0; letter-spacing: .5px; }
+  header h1 .dot { color: var(--green); }
+  .stat { display: flex; flex-direction: column; }
+  .stat .k { color: var(--dim); font-size: 11px; text-transform: uppercase; letter-spacing: .5px; }
+  .stat .v { font-size: 15px; font-variant-numeric: tabular-nums; }
+  .controls { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+  .controls .ctl { color: var(--dim); font-size: 11px; display: flex; align-items: center; gap: 6px;
+    text-transform: uppercase; letter-spacing: .5px; }
+  button, .controls select {
+    font-family: var(--mono); font-size: 12px; color: var(--fg);
+    background: var(--panel2); border: 1px solid var(--edge); border-radius: 6px;
+    padding: 4px 10px; cursor: pointer;
+  }
+  button:hover, .controls select:hover { border-color: var(--accent); }
+  button.active { color: var(--yellow); border-color: var(--yellow); }
+  #status { color: var(--dim); min-width: 150px; font-size: 11px; }
+  #status.live { color: var(--green); }
+  #status.down { color: var(--red); }
+
+  #grid {
+    display: grid; gap: 14px; padding: 16px;
+    grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+    align-items: start;
+  }
+  .card {
+    background: var(--panel); border: 1px solid var(--edge); border-radius: 8px;
+    padding: 12px 14px; display: flex; flex-direction: column; gap: 8px;
+  }
+  .card.stale { opacity: .55; filter: grayscale(.4); }
+  .card.maximized.stale { opacity: 1; filter: none; }   /* modal must stay readable */
+  .card.maximized .cardbtns [data-act="min"] { display: none; }
+  .card .top { display: flex; align-items: baseline; gap: 8px; }
+  .card .host { font-size: 15px; font-weight: 600; cursor: default; }
+  .card .badge { font-size: 10px; padding: 1px 6px; border-radius: 10px; text-transform: uppercase; letter-spacing: .5px; }
+  .card .badge.live  { background: rgba(63,185,80,.15); color: var(--green); }
+  .card .badge.idle  { background: rgba(210,153,34,.15); color: var(--yellow); }
+  .card .badge.stale { background: rgba(248,81,73,.15); color: var(--red); }
+  .card .meta { color: var(--dim); font-size: 11px; margin-left: auto; text-align: right;
+    font-variant-numeric: tabular-nums; }
+  .card .cardbtns { display: flex; gap: 4px; margin-left: 8px; align-self: flex-start; }
+  .card .cardbtns button {
+    padding: 0 7px; font-size: 13px; line-height: 20px; background: transparent;
+    border: 1px solid transparent; border-radius: 4px; color: var(--dim);
+  }
+  .card .cardbtns button:hover { color: var(--fg); border-color: var(--edge); background: var(--panel2); }
+  .card.min { gap: 0; }
+  .card .summary { display: none; font-size: 12px; color: var(--dim); font-variant-numeric: tabular-nums; }
+  .card.min .summary { display: block; padding-top: 2px; }
+  .card.min .body, .card.min .maxbody { display: none; }
+
+  #backdrop {
+    display: none; position: fixed; left: 0; right: 0; bottom: 0; top: var(--headh);
+    background: rgba(0,0,0,.55); z-index: 20;
+  }
+  #backdrop.show { display: block; }
+  .card.maximized {
+    position: fixed; top: calc(var(--headh) + 14px); left: 16px; right: 16px; bottom: 16px;
+    z-index: 30; overflow: auto; box-shadow: 0 12px 48px rgba(0,0,0,.6);
+  }
+  .maxbody { display: none; }
+  .card.maximized .maxbody { display: flex; flex-direction: column; gap: 10px; }
+  .card.maximized .body { display: none; }
+
+  /* ============ env-explorer card format ============ */
+  .mrow { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .mblk { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .mblk .k { font-size: 10px; letter-spacing: .16em; text-transform: uppercase; color: var(--dim);
+    display: flex; justify-content: space-between; }
+  .mblk .k .mdot { width: 6px; height: 6px; border-radius: 50%; margin-top: 3px; }
+  .mblk .v { font-family: var(--mono); font-size: 30px; font-weight: 500; line-height: 1.15;
+    font-variant-numeric: tabular-nums; }
+  .mblk .v .u { font-size: 12px; color: var(--dim); margin-left: 4px; }
+  .mblk .d { font-family: var(--mono); font-size: 11px; color: var(--faint); min-height: 14px; }
+  .mblk .d .up { color: var(--up); } .mblk .d .dn { color: var(--dn); }
+  .mblk canvas { width: 100%; height: 34px; margin-top: 6px; display: block; }
+  .nodata { color: var(--faint); font-size: 11px; padding: 18px 0 10px; }
+
+  /* ============ maximized: env-explorer overlay format ============ */
+  .ovlhead { display: flex; align-items: flex-start; gap: 18px; flex-wrap: wrap; }
+  .ovlhead .ttl { font-size: 11px; letter-spacing: .16em; text-transform: uppercase; color: var(--dim); }
+  .ovlhead .big { font-family: var(--mono); font-size: clamp(34px, 5vw, 48px); font-weight: 500;
+    line-height: 1.05; font-variant-numeric: tabular-nums; }
+  .ovlhead .big .u { font-size: 15px; color: var(--dim); margin-left: 6px; }
+  .ovlhead .bgrp { display: flex; gap: 34px; flex-wrap: wrap; }
+  .ovlhead .rng { font-family: var(--mono); font-size: 11px; color: var(--faint); margin-left: auto;
+    text-align: right; }
+  .ranges { display: flex; gap: 2px; background: var(--panel2); border: 1px solid var(--edge);
+    border-radius: 8px; padding: 2px; width: max-content; }
+  .rbtn { font-family: var(--mono); font-size: 11px; padding: 5px 10px; border-radius: 6px;
+    color: var(--dim); cursor: pointer; border: 0; background: transparent; }
+  .rbtn:hover { color: var(--fg); }
+  .rbtn.on { background: var(--panel); color: var(--accent); }
+  .lanes { position: relative; border: 1px solid var(--edge); border-radius: 8px; overflow: hidden; background: var(--panel2); }
+  .lane { position: relative; border-bottom: 1px solid var(--edge); }
+  .lane:last-of-type { border-bottom: 0; }
+  .lane canvas { display: block; width: 100%; height: clamp(140px, 26vh, 240px); }
+  .lane .lname { position: absolute; top: 8px; left: 12px; z-index: 2; font-size: 10px;
+    letter-spacing: .12em; text-transform: uppercase; color: var(--dim); pointer-events: none; }
+  .lane .lext { position: absolute; top: 8px; right: 12px; z-index: 2; text-align: right;
+    font-size: 10px; color: var(--faint); pointer-events: none; line-height: 1.5;
+    font-variant-numeric: tabular-nums; }
+  .xaxis { height: 26px; border-top: 1px solid var(--edge); position: relative; }
+  .xaxis canvas { display: block; width: 100%; height: 26px; }
+  /* hover crosshair + tooltip (env-explorer pattern) */
+  .crosshair {
+    position: absolute; top: 0; bottom: 26px; width: 1px; background: #ffffff44;
+    pointer-events: none; display: none; z-index: 5;
+  }
+  .tooltip {
+    position: absolute; display: none; z-index: 6; pointer-events: none;
+    background: #0b0f14f2; border: 1px solid var(--edge); border-radius: 8px;
+    padding: 9px 12px; font-family: var(--mono); font-size: 11px; line-height: 1.7;
+    min-width: 150px; box-shadow: 0 6px 24px rgba(0,0,0,.6);
+  }
+  .tooltip .tt { color: var(--faint); letter-spacing: .06em; margin-bottom: 3px; }
+  .tooltip .tr { display: flex; justify-content: space-between; gap: 16px; }
+  .tooltip .td { display: inline-block; width: 6px; height: 6px; border-radius: 50%; margin-right: 7px; }
+  .ovlstats { display: flex; gap: 26px; flex-wrap: wrap; font-size: 12px; font-variant-numeric: tabular-nums; }
+  .ovlstats > div { display: flex; flex-direction: column; gap: 3px; }
+  .ovlstats .lbl { font-size: 10px; letter-spacing: .12em; text-transform: uppercase; color: var(--faint); }
+
+  .empty { padding: 60px; text-align: center; color: var(--dim); grid-column: 1/-1; }
+  footer { padding: 10px 18px; color: var(--dim); font-size: 11px; border-top: 1px solid var(--edge); }
+  footer a { color: var(--accent); text-decoration: none; }
+  footer a:hover { text-decoration: underline; }
+  @media (max-width: 640px) { .mblk .v { font-size: 24px; } }
+</style>
+</head>
+<body>
+<header>
+  <h1><span class="dot">●</span> shellydash</h1>
+  <div class="stat"><span class="k">sensors</span><span class="v" id="s-count">0</span></div>
+  <div class="stat"><span class="k">avg temp</span><span class="v" id="s-tavg">—</span></div>
+  <div class="stat"><span class="k">coldest</span><span class="v" id="s-tmin">—</span></div>
+  <div class="stat"><span class="k">warmest</span><span class="v" id="s-tmax">—</span></div>
+  <div class="stat"><span class="k">avg rh</span><span class="v" id="s-havg">—</span></div>
+  <div class="controls">
+    <button id="pauseBtn" title="Pause / resume live updates">❚❚ Pause</button>
+    <a href="/map" title="Property blueprint heatmap" style="text-decoration:none"><button type="button">🗺 Blueprint</button></a>
+    <label class="ctl">refresh
+      <select id="refreshSel">
+        <option value="10000">10 s</option>
+        <option value="30000" selected>30 s</option>
+        <option value="60000">60 s</option>
+        <option value="300000">5 m</option>
+      </select>
+    </label>
+    <div id="status">connecting…</div>
+  </div>
+</header>
+<div id="grid"><div class="empty">Waiting for Shelly sensors to wake and report…</div></div>
+<div id="backdrop"></div>
+<footer>shellydash — property climate · mDNS-discovered Shelly sensors ·
+  <a href="/api/export.csv">export csv</a> · api: /api/overview /api/samples /api/stats ·
+  double-click a sensor name to rename it · <span id="ts"></span></footer>
+
+<script>
+"use strict";
+/* ================= config ================= */
+const METRICS = {
+  t_c: { key: "t_c", label: "Temp",     unit: "°C",  color: "var(--tcol)", hex: "#e8a33d", digits: 1 },
+  rh:  { key: "rh",  label: "Humidity", unit: "%RH", color: "var(--hcol)", hex: "#5aa9e6", digits: 1 },
+};
+const RANGES = [ ["1H", 3600], ["6H", 6*3600], ["24H", 86400], ["7D", 7*86400], ["ALL", 0] ];
+const LIVE_S = 3*3600, IDLE_S = 26*3600;   // badge thresholds on last report age
+
+const grid = document.getElementById("grid");
+const backdrop = document.getElementById("backdrop");
+const $ = id => document.getElementById(id);
+const nowS = () => Math.floor(Date.now()/1000 + state.tOffset);  // server-aligned clock
+const fmt = (v,d) => v==null ? "—" : Number(v).toFixed(d);
+
+/* per-card UI state, persisted */
+const state = {
+  devices: [],              // last /api/overview payload
+  min: new Set(),           // minimized device ids
+  maxId: null,              // maximized device id
+  maxRange: 86400,          // seconds window for the maximized lanes
+  maxData: null,            // fetched samples for maximized card
+  maxReq: 0,                // loadMax request token — stale responses lose
+  tOffset: 0,               // server-clock minus client-clock, seconds
+  paused: false,
+  refreshMs: 30000,
+  timer: null,
+};
+const UI_KEY = "shellydash-ui";
+function saveUI(){
+  try{ localStorage.setItem(UI_KEY, JSON.stringify({ min:[...state.min], refreshMs: state.refreshMs })); }catch(e){}
+}
+function loadUI(){
+  try{
+    const o = JSON.parse(localStorage.getItem(UI_KEY) || "{}");
+    if(Array.isArray(o.min)) state.min = new Set(o.min);
+    const ok = [...$("refreshSel").options].some(op=>+op.value===o.refreshMs);
+    if(ok) state.refreshMs = o.refreshMs;      // ignore junk: a bad value
+  }catch(e){}                                  // blanks the select or spins the loop
+}
+
+/* ================= canvas helpers ================= */
+function setupCanvas(c){
+  const dpr = window.devicePixelRatio||1;
+  const w = c.clientWidth, h = c.clientHeight;
+  if(c.width!==Math.round(w*dpr)||c.height!==Math.round(h*dpr)){
+    c.width=Math.round(w*dpr); c.height=Math.round(h*dpr);
+  }
+  const ctx = c.getContext("2d");
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  ctx.clearRect(0,0,w,h);
+  return [ctx,w,h];
+}
+
+/* env-explorer sparkline; x by timestamp so irregular battery-sensor
+   sampling isn't drawn as if evenly spaced */
+function drawSpark(c, pts, hex){
+  const [ctx,w,h] = setupCanvas(c);
+  if(!pts || !pts.length){
+    ctx.fillStyle="#7d8a9c"; ctx.font="10px "+getComputedStyle(document.body).fontFamily;
+    ctx.fillText("collecting…", 6, h/2+3);
+    return;
+  }
+  let lo=Infinity, hi=-Infinity, t0=Infinity, t1=-Infinity;
+  for(const p of pts){ if(p[1]<lo)lo=p[1]; if(p[1]>hi)hi=p[1];
+                       if(p[0]<t0)t0=p[0]; if(p[0]>t1)t1=p[0]; }
+  const pad=(hi-lo)*0.15||1; lo-=pad; hi+=pad;
+  const span=Math.max(t1-t0,1);
+  const x=ts=>(ts-t0)/span*w, y=v=>h-3-((v-lo)/(hi-lo))*(h-6);
+  if(pts.length===1){
+    ctx.fillStyle=hex;
+    ctx.beginPath(); ctx.arc(x(pts[0][0]),y(pts[0][1]),2,0,7); ctx.fill();
+    return;
+  }
+  ctx.beginPath();
+  pts.forEach((p,i)=> i?ctx.lineTo(x(p[0]),y(p[1])):ctx.moveTo(x(p[0]),y(p[1])));
+  ctx.strokeStyle=hex; ctx.lineWidth=1.2; ctx.stroke();
+  ctx.lineTo(x(t1),h); ctx.lineTo(x(t0),h); ctx.closePath();
+  ctx.fillStyle=hex+"14"; ctx.fill();
+}
+
+/* ================= card DOM ================= */
+const ICON_MIN  = "—", ICON_REST = "+", ICON_MAX = "⤢", ICON_X = "✕";
+
+function metricBlock(m){
+  return `<div class="mblk" data-m="${m.key}">
+    <div class="k"><span>${m.label}</span><span class="mdot" style="background:${m.hex}"></span></div>
+    <div class="v"><span class="num">—</span><span class="u">${m.unit}</span></div>
+    <div class="d"></div>
+    <canvas height="34"></canvas>
+  </div>`;
+}
+
+function buildCard(d){
+  const el = document.createElement("div");
+  el.className = "card";
+  el.id = "card-"+d.device_id;
+  el.innerHTML = `
+    <div class="top">
+      <span class="host" title="double-click to rename"></span>
+      <span class="badge"></span>
+      <span class="meta"></span>
+      <div class="cardbtns">
+        <button data-act="min"></button>
+        <button data-act="max" title="Maximize">⤢</button>
+      </div>
+    </div>
+    <div class="summary"></div>
+    <div class="body">
+      <div class="mrow">${metricBlock(METRICS.t_c)}${metricBlock(METRICS.rh)}</div>
+    </div>
+    <div class="maxbody">
+      <div class="ovlhead">
+        <div class="bgrp">
+          <div><div class="ttl">Temp</div><div class="big"><span class="bv-t">—</span><span class="u">°C</span></div></div>
+          <div><div class="ttl">Humidity</div><div class="big"><span class="bv-h">—</span><span class="u">%RH</span></div></div>
+        </div>
+        <div class="rng"></div>
+      </div>
+      <div class="ranges"></div>
+      <div class="lanes">
+        <div class="lane"><span class="lname">Temp °C</span><span class="lext" id-lext="t"></span><canvas id-lane="t"></canvas></div>
+        <div class="lane"><span class="lname">Humidity %RH</span><span class="lext" id-lext="h"></span><canvas id-lane="h"></canvas></div>
+        <div class="xaxis"><canvas id-xaxis></canvas></div>
+        <div class="crosshair" id-lane-crosshair></div>
+        <div class="tooltip" id-lane-tooltip></div>
+      </div>
+      <div class="ovlstats"></div>
+    </div>`;
+  el.querySelector(".host").textContent = d.name || d.device_id;
+  el.querySelector(".host").addEventListener("dblclick", () => renameDevice(d));
+  const [bMin, bMax] = el.querySelectorAll(".cardbtns button");
+  bMin.onclick = e => { e.stopPropagation(); toggleMin(d.device_id); };
+  bMax.onclick = e => { e.stopPropagation(); state.maxId===d.device_id ? closeMax() : openMax(d.device_id); };
+  const rb = el.querySelector(".ranges");
+  rb.innerHTML = RANGES.map(([k,s]) =>
+    `<button class="rbtn${s===state.maxRange?" on":""}" data-r="${s}">${k}</button>`).join("");
+  rb.querySelectorAll(".rbtn").forEach(b => b.onclick = () => {
+    state.maxRange = +b.dataset.r;
+    rb.querySelectorAll(".rbtn").forEach(x => x.classList.toggle("on", x===b));
+    loadMax();
+  });
+  bindMaxHover(el.querySelector(".lanes"));
+  syncMinBtn(el, d.device_id);
+  return el;
+}
+
+function syncMinBtn(el, did){
+  const b = el.querySelector('[data-act="min"]');
+  const down = state.min.has(did);
+  b.textContent = down ? ICON_REST : ICON_MIN;
+  b.title = down ? "Restore" : "Minimize";
+}
+
+function toggleMin(did){
+  state.min.has(did) ? state.min.delete(did) : state.min.add(did);
+  const el = $("card-"+did);
+  el.classList.toggle("min", state.min.has(did));
+  syncMinBtn(el, did);
+  saveUI();
+  paintCard(did);   // fills the summary line when minimizing, redraws the
+                    // (previously layout-less) canvases when restoring
+}
+
+/* ================= painting ================= */
+function ago(ts){
+  if(!ts) return "never";
+  const s = nowS()-ts;
+  if(s<90) return s+"s ago";
+  if(s<5400) return Math.round(s/60)+"m ago";
+  if(s<129600) return (s/3600).toFixed(1)+"h ago";
+  return Math.round(s/86400)+"d ago";
+}
+
+function paintCard(did){
+  const d = state.devices.find(x=>x.device_id===did); if(!d) return;
+  const el = $("card-"+did); if(!el) return;
+  const L = d.latest, age = d.last_seen ? nowS()-d.last_seen : Infinity;
+  const badge = el.querySelector(".badge");
+  const cls = age<=LIVE_S ? "live" : age<=IDLE_S ? "idle" : "stale";
+  badge.className = "badge "+cls; badge.textContent = cls;
+  el.classList.toggle("stale", cls==="stale");
+  el.querySelector(".meta").innerHTML =
+    `${ago(d.last_seen)} · bat ${fmt(L&&L.bat_pct,0)}% · ${(L&&L.rssi)!=null?L.rssi:"—"} dBm`;
+  if(state.min.has(did)){
+    el.querySelector(".summary").textContent =
+      `${fmt(L&&L.t_c,1)}°C · ${fmt(L&&L.rh,0)}%RH`;
+    return;
+  }
+  if(state.maxId===did) return;   // maximized: body is hidden, its canvases
+                                  // have no layout — painting them draws at 0×0
+  for(const key of ["t_c","rh"]){
+    const m = METRICS[key];
+    const blk = el.querySelector(`.mblk[data-m="${key}"]`);
+    const v = L ? L[key] : null;
+    blk.querySelector(".num").textContent = fmt(v, m.digits);
+    const dEl = blk.querySelector(".d");
+    const sp = (d.spark && d.spark[key]) || [];
+    // delta vs the sample nearest 30 min before the LATEST sample, not vs
+    // spark-end — for a sleeping sensor those can differ by hours
+    if(sp.length>5 && v!=null && L){
+      const tRef = L.ts-1800;
+      let ref=null; for(const p of sp){ if(p[0]<=tRef) ref=p[1]; else break; }
+      if(ref!=null){
+        const dv = v-ref, cls2 = dv>0?"up":dv<0?"dn":"";
+        const arrow = dv>0?"▲":dv<0?"▼":"·";
+        dEl.innerHTML = `<span class="${cls2}">${arrow} ${fmt(Math.abs(dv),m.digits)}</span> <span style="color:var(--faint)">30m</span>`;
+      } else dEl.textContent = "";
+    } else dEl.textContent = "";
+    drawSpark(blk.querySelector("canvas"), sp, m.hex);
+  }
+}
+
+function paintHeader(){
+  const fresh = state.devices.filter(d=>d.latest && nowS()-d.last_seen<=IDLE_S && d.latest.t_c!=null);
+  $("s-count").textContent = state.devices.length;
+  if(fresh.length){
+    const ts = fresh.map(d=>d.latest.t_c), hs = fresh.map(d=>d.latest.rh).filter(v=>v!=null);
+    $("s-tavg").textContent = (ts.reduce((a,b)=>a+b,0)/ts.length).toFixed(1)+"°C";
+    const lo = Math.min(...ts), hi = Math.max(...ts);
+    const nm = v => {
+      const d = fresh.find(x=>x.latest.t_c===v);
+      return d ? (d.name || "…"+d.device_id.slice(-4)) : "";
+    };
+    $("s-tmin").textContent = lo.toFixed(1)+"° "+nm(lo);
+    $("s-tmax").textContent = hi.toFixed(1)+"° "+nm(hi);
+    $("s-havg").textContent = hs.length ? (hs.reduce((a,b)=>a+b,0)/hs.length).toFixed(0)+"%" : "—";
+  } else {
+    $("s-tavg").textContent = $("s-tmin").textContent = $("s-tmax").textContent = $("s-havg").textContent = "—";
+  }
+}
+
+function render(){
+  if(!state.devices.length){
+    grid.innerHTML = '<div class="empty">Waiting for Shelly sensors to wake and report…</div>';
+    paintHeader(); return;
+  }
+  for(const d of state.devices){
+    let el = $("card-"+d.device_id);
+    if(!el){ el = buildCard(d); grid.appendChild(el); }
+    el.classList.toggle("min", state.min.has(d.device_id) && state.maxId!==d.device_id);
+    paintCard(d.device_id);
+  }
+  // drop cards for vanished devices
+  for(const el of [...grid.children]){
+    if(el.id && el.id.startsWith("card-") &&
+       !state.devices.some(d=>"card-"+d.device_id===el.id)) el.remove();
+  }
+  const empty = grid.querySelector(".empty"); if(empty) empty.remove();
+  // a vanished device may have taken its card with it — release the modal
+  if(state.maxId && !$("card-"+state.maxId)){ const gone=state.maxId; state.maxId=null; closeMax(); }
+  if(state.maxId && $("card-"+state.maxId)) paintMaxHead();
+  paintHeader();
+}
+
+/* ================= maximized ================= */
+function openMax(did){
+  state.maxId = did;
+  const el = $("card-"+did); if(!el) return;
+  el.classList.add("maximized"); el.classList.remove("min");
+  backdrop.classList.add("show");
+  document.body.style.overflow = "hidden";
+  el.querySelector('[data-act="max"]').textContent = ICON_X;
+  // range buttons were baked at build time — another card may have changed
+  // the global range since; re-sync the highlight on open.
+  el.querySelectorAll(".rbtn").forEach(b =>
+    b.classList.toggle("on", +b.dataset.r===state.maxRange));
+  loadMax();
+}
+function closeMax(){
+  if(!state.maxId) return;
+  const el = $("card-"+state.maxId);
+  if(el){
+    el.classList.remove("maximized");
+    el.querySelector('[data-act="max"]').textContent = ICON_MAX;
+    el.classList.toggle("min", state.min.has(state.maxId));
+    paintCard(state.maxId);
+  }
+  state.maxId = null; state.maxData = null;
+  backdrop.classList.remove("show");
+  document.body.style.overflow = "";
+}
+backdrop.onclick = closeMax;
+document.addEventListener("keydown", e => { if(e.key==="Escape") closeMax(); });
+
+function maxWindow(){
+  const to = nowS()+60;
+  let from;
+  if(state.maxRange===0){   // ALL: anchor to THIS device's first sample
+    const d = state.devices.find(x=>x.device_id===state.maxId);
+    from = (d && d.first_ts) ? d.first_ts-60 : to-3600;
+  }else{
+    from = to-state.maxRange;
+  }
+  if(to-from < 300) from = to-300;    // never a zero-width (NaN) window
+  return {from, to};
+}
+
+async function loadMax(){
+  const did = state.maxId; if(!did) return;
+  const req = ++state.maxReq, rangeAtReq = state.maxRange;
+  const {from,to} = maxWindow();
+  try{
+    const res = await (await fetch(`/api/samples?device=${encodeURIComponent(did)}&from=${from}&to=${to}`)).json();
+    if(state.maxId!==did || req!==state.maxReq || rangeAtReq!==state.maxRange) return;
+    state.maxData = res.samples;
+    drawMax();
+    const st = await (await fetch(`/api/stats?device=${encodeURIComponent(did)}&from=${from}&to=${to}`)).json();
+    if(state.maxId!==did || req!==state.maxReq) return;
+    const el = $("card-"+did);
+    const grp = (key,m) => {
+      const s = st[key];
+      return (s && s.n)
+        ? [[m.label+" min",fmt(s.min,m.digits)],[m.label+" avg",fmt(s.avg,m.digits)],
+           [m.label+" max",fmt(s.max,m.digits)],[m.label+" range",fmt(s.max-s.min,m.digits)],
+           ["samples",s.n.toLocaleString()]]
+        : [[m.label,"no data"]];
+    };
+    el.querySelector(".ovlstats").innerHTML =
+      [...grp("t_c",METRICS.t_c), ...grp("rh",METRICS.rh)]
+        .map(([l,v])=>`<div><span class="lbl">${l}</span><span>${v}</span></div>`).join("");
+  }catch(e){ /* next tick retries */ }
+}
+
+function paintMaxHead(){
+  const did = state.maxId; if(!did) return;
+  const d = state.devices.find(x=>x.device_id===did); if(!d) return;
+  const el = $("card-"+did), L = d.latest;
+  el.querySelector(".bv-t").textContent = fmt(L&&L.t_c, 1);
+  el.querySelector(".bv-h").textContent = fmt(L&&L.rh, 1);
+  const {from,to} = maxWindow();
+  el.querySelector(".rng").innerHTML =
+    `${new Date(from*1000).toLocaleString([],{month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"})} →<br>` +
+    `${new Date(to*1000).toLocaleString([],{month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"})}`;
+}
+
+function drawLane(c, pts, m, from, to){
+  const [ctx,w,h] = setupCanvas(c);
+  ctx.strokeStyle="rgba(255,255,255,.05)"; ctx.lineWidth=1;
+  for(let i=1;i<=3;i++){ const y=h*i/4; ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(w,y); ctx.stroke(); }
+  if(!pts || !pts.length){
+    ctx.fillStyle="#7d8a9c"; ctx.font="11px "+getComputedStyle(document.body).fontFamily;
+    ctx.fillText("no data in this range yet", 12, h/2);
+    return null;
+  }
+  let lo=Infinity, hi=-Infinity;
+  for(const p of pts){ if(p[1]<lo)lo=p[1]; if(p[1]>hi)hi=p[1]; }
+  const pad=(hi-lo)*0.12||1; lo-=pad; hi+=pad;
+  const x=ts=>(ts-from)/(to-from)*w, y=v=>h-4-((v-lo)/(hi-lo))*(h-8);
+  if(pts.length===1){   // a lone sample still deserves a visible mark
+    ctx.fillStyle=m.hex;
+    ctx.beginPath(); ctx.arc(x(pts[0][0]),y(pts[0][1]),3,0,7); ctx.fill();
+    return {lo:pts[0][1], hi:pts[0][1]};
+  }
+  ctx.beginPath();
+  pts.forEach((p,i)=> i?ctx.lineTo(x(p[0]),y(p[1])):ctx.moveTo(x(p[0]),y(p[1])));
+  ctx.strokeStyle=m.hex; ctx.lineWidth=1.4; ctx.stroke();
+  ctx.lineTo(x(pts[pts.length-1][0]),h); ctx.lineTo(x(pts[0][0]),h); ctx.closePath();
+  ctx.fillStyle=m.hex+"12"; ctx.fill();
+  let dlo=Infinity, dhi=-Infinity;
+  for(const p of pts){ if(p[1]<dlo)dlo=p[1]; if(p[1]>dhi)dhi=p[1]; }
+  return {lo:dlo, hi:dhi};
+}
+
+function drawXAxis(c, from, to){
+  const [ctx,w,h] = setupCanvas(c);
+  ctx.fillStyle="#6e7a8a"; ctx.font="10px "+getComputedStyle(document.body).fontFamily;
+  ctx.strokeStyle="rgba(255,255,255,.08)"; ctx.lineWidth=1;
+  const span = to-from, n = Math.max(2, Math.floor(w/140));
+  const dayFmt = span>86400;
+  for(let i=0;i<=n;i++){
+    const t = from + span*i/n, x = Math.round(w*i/n)+.5;
+    ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,5); ctx.stroke();
+    const d = new Date(t*1000);
+    const lbl = dayFmt
+      ? d.toLocaleString([],{month:"numeric",day:"numeric"})+" "+d.toLocaleString([],{hour:"2-digit",minute:"2-digit"})
+      : d.toLocaleString([],{hour:"2-digit",minute:"2-digit"});
+    ctx.textAlign = i===0?"left":i===n?"right":"center";
+    ctx.fillText(lbl, Math.min(Math.max(x,2),w-2), 17);
+  }
+}
+
+function drawMax(){
+  const did = state.maxId; if(!did || !state.maxData) return;
+  const el = $("card-"+did); if(!el) return;
+  hideMaxHover(el.querySelector(".lanes"));
+  const {from,to} = maxWindow();
+  paintMaxHead();
+  const rows = state.maxData;
+  const tPts = rows.filter(r=>r.t_c!=null).map(r=>[r.ts,r.t_c]);
+  const hPts = rows.filter(r=>r.rh!=null).map(r=>[r.ts,r.rh]);
+  const te = drawLane(el.querySelector('[id-lane="t"]'), tPts, METRICS.t_c, from, to);
+  const he = drawLane(el.querySelector('[id-lane="h"]'), hPts, METRICS.rh, from, to);
+  el.querySelector('[id-lext="t"]').innerHTML = te ? `▲ ${fmt(te.hi,1)}<br>▼ ${fmt(te.lo,1)}` : "";
+  el.querySelector('[id-lext="h"]').innerHTML = he ? `▲ ${fmt(he.hi,1)}<br>▼ ${fmt(he.lo,1)}` : "";
+  drawXAxis(el.querySelector("[id-xaxis]"), from, to);
+}
+
+/* ============ maximized lane hover tooltip (env-explorer pattern) ============ */
+// First index whose ts >= target, in a ts-ascending array.
+function bisectRows(arr, ts){
+  let lo=0, hi=arr.length-1;
+  while(lo<hi){ const mid=(lo+hi)>>1; if(arr[mid].ts<ts) lo=mid+1; else hi=mid; }
+  return lo;
+}
+// Nearest non-null value for `key`, walking outward from the bisect point in
+// true timestamp order. Two pointers rather than expanding index rings: i0 is
+// the first sample at or after ts, so the sample *before* it is usually the
+// closer of the two and has to be a candidate from the very first step.
+// Metrics go null independently when a sensor drops out, so each one may land
+// on a different sample.
+function nearestSample(arr, i0, key, ts){
+  let l=i0-1, r=i0;
+  while(l>=0 || r<arr.length){
+    let i;
+    if(l<0) i=r++;
+    else if(r>=arr.length) i=l--;
+    else i = (ts-arr[l].ts <= arr[r].ts-ts) ? l-- : r++;
+    const v=arr[i][key];
+    if(v!=null) return v;
+  }
+  return null;
+}
+function hideMaxHover(lanes){
+  if(!lanes) return;
+  const ch = lanes.querySelector(".crosshair"), tip = lanes.querySelector(".tooltip");
+  if(ch) ch.style.display = "none";
+  if(tip) tip.style.display = "none";
+}
+function bindMaxHover(lanes){
+  if(!lanes || lanes.dataset.hover) return;
+  lanes.dataset.hover = "1";
+  const ch = lanes.querySelector(".crosshair"), tip = lanes.querySelector(".tooltip");
+  if(!ch || !tip) return;
+  lanes.addEventListener("pointermove", e => {
+    if(!state.maxId || !state.maxData || !state.maxData.length){ hideMaxHover(lanes); return; }
+    const lr = lanes.getBoundingClientRect();
+    const plot = lanes.querySelector(".lane canvas");
+    const pr = plot.getBoundingClientRect();       // plot canvas: full content width
+    const x = e.clientX - pr.left, w = pr.width;
+    const {from,to} = maxWindow();
+    if(x<0 || x>w || to-from<=0){ hideMaxHover(lanes); return; }
+    ch.style.display = "block";
+    ch.style.left = Math.max(1, Math.min(e.clientX - lr.left, lr.width-2)) + "px";
+    const ts = from + (x/w)*(to-from);
+    const i0 = bisectRows(state.maxData, ts);
+    let rows = "";
+    for(const m of [METRICS.t_c, METRICS.rh]){
+      const best = nearestSample(state.maxData, i0, m.key, ts);
+      rows += `<div class="tr"><span><span class="td" style="background:${m.hex}"></span>${m.label}</span><span>${fmt(best,m.digits)} ${m.unit}</span></div>`;
+    }
+    tip.innerHTML = `<div class="tt">${new Date(ts*1000).toLocaleString([],{month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"})}</div>${rows}`;
+    tip.style.display = "block";
+    const tw = tip.offsetWidth, th = tip.offsetHeight;
+    const lx = x+14+tw > lr.width ? x-14-tw : x+14;   // flip on the right edge
+    tip.style.left = Math.max(2, lx)+"px";
+    const plotH = lr.height-26;                        // keep it off the xaxis row
+    tip.style.top  = Math.max(2, Math.min(e.clientY-lr.top+10, plotH-th-2))+"px";
+  });
+  lanes.addEventListener("pointerleave", () => hideMaxHover(lanes));
+}
+
+/* ================= rename ================= */
+async function renameDevice(d){
+  const cur = d.name || d.device_id;
+  const name = prompt("Sensor name", cur === d.device_id ? "" : cur);
+  if(name===null) return;
+  try{
+    const r = await fetch(`/api/devices/${encodeURIComponent(d.device_id)}/name`, {
+      method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({name: name.trim()})
+    });
+    if(r.ok){ d.name = name.trim()||null;
+      $("card-"+d.device_id).querySelector(".host").textContent = d.name||d.device_id; }
+  }catch(e){}
+}
+
+/* ================= refresh loop ================= */
+async function refresh(){
+  try{
+    const res = await (await fetch("/api/overview")).json();
+    state.tOffset = res.now - Math.floor(Date.now()/1000);  // freshness math
+    state.devices = res.devices;                            // trusts the server clock
+    render();
+    const st = $("status");
+    st.className = "live"; st.id = "status";
+    st.textContent = "updated "+new Date().toLocaleTimeString();
+    $("ts").textContent = new Date().toLocaleString();
+    if(state.maxId) loadMax();
+  }catch(e){
+    const st = $("status");
+    st.className = "down";
+    st.textContent = "server unreachable";
+  }
+}
+function arm(){
+  clearTimeout(state.timer);
+  if(!state.paused) state.timer = setTimeout(async()=>{ await refresh(); arm(); }, state.refreshMs);
+}
+$("pauseBtn").onclick = () => {
+  state.paused = !state.paused;
+  $("pauseBtn").classList.toggle("active", state.paused);
+  $("pauseBtn").textContent = state.paused ? "▶ Resume" : "❚❚ Pause";
+  if(!state.paused) refresh();
+  arm();
+};
+$("refreshSel").onchange = () => {
+  state.refreshMs = +$("refreshSel").value; saveUI(); arm();
+};
+
+loadUI();
+$("refreshSel").value = String(state.refreshMs);
+// The header wraps on narrow viewports; --headh drives the backdrop and
+// maximized-card offsets, so track the real rendered height.
+function syncHeadh(){
+  document.documentElement.style.setProperty(
+    "--headh", document.querySelector("header").offsetHeight+"px");
+}
+addEventListener("resize", syncHeadh);
+syncHeadh();
+refresh(); arm();
+</script>
+</body>
+</html>

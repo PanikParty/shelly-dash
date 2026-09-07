@@ -1,0 +1,14 @@
+[Unit]
+Description=Shelly climate collector (mDNS watch + poll awake Shelly sensors)
+After=network-online.target avahi-daemon.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/shelly-dash
+ExecStart=/opt/shelly-dash/.venv/bin/python collector.py
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,6 @@
+# runtime state — never version these
+data/
+.venv/
+logs/
+__pycache__/
+*.pyc

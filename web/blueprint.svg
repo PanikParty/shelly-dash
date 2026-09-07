@@ -1,0 +1,127 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 1060" width="1000" height="1060" role="img" aria-label="Brownell residence blueprint">
+      <defs>
+        <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+          <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#12335f" stroke-width="1"/>
+        </pattern>
+        <pattern id="stale" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+          <rect width="8" height="8" fill="#0d2040"/>
+          <rect width="4" height="8" fill="#12284a"/>
+        </pattern>
+        <linearGradient id="heat" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0" stop-color="#3b82f6"/>
+          <stop offset=".18" stop-color="#06b6d4"/>
+          <stop offset=".38" stop-color="#10b981"/>
+          <stop offset=".55" stop-color="#facc15"/>
+          <stop offset=".75" stop-color="#f97316"/>
+          <stop offset="1" stop-color="#ef4444"/>
+        </linearGradient>
+        <filter id="glow"><feGaussianBlur stdDeviation="2" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+      </defs>
+
+      <!-- backdrop + grid -->
+      <rect width="1000" height="1060" fill="#0b1d3a"/>
+      <rect width="1000" height="1060" fill="url(#grid)"/>
+
+      <!-- street at top -->
+      <rect x="0" y="16" width="1000" height="64" fill="#0e2142" stroke="none"/>
+      <text x="500" y="56" text-anchor="middle" font-size="15" letter-spacing="6" fill="#5a7390">BROWNELL</text>
+      <line x1="0" y1="80" x2="1000" y2="80" stroke="#5a7390" stroke-width="3" stroke-dasharray="14 8"/>
+
+      <!-- property boundary -->
+      <rect x="44" y="100" width="912" height="898" fill="none" stroke="#7ea3cc" stroke-width="2.5" stroke-dasharray="18 8"/>
+
+      <!-- ================= DRIVEWAY ================= -->
+      <path d="M 250 80 L 205 470 L 268 478 L 315 80 Z" fill="#0e2142" stroke="#7ea3cc" stroke-width="1.5"/>
+      <text x="262" y="300" transform="rotate(84 262 300)" font-size="11" fill="#5a7390" letter-spacing="3">DRIVEWAY</text>
+
+      <!-- ================= MAIN HOUSE ================= -->
+      <g id="house">
+        <rect x="430" y="150" width="340" height="258" fill="none" stroke="#bfd8ff" stroke-width="3"/>
+        <rect x="436" y="156" width="328" height="246" fill="none" stroke="#8fb6e6" stroke-width="1.5"/>
+        <!-- gable ridge -->
+        <line x1="430" y1="150" x2="600" y2="118" stroke="#bfd8ff" stroke-width="3"/>
+        <line x1="600" y1="118" x2="770" y2="150" stroke="#bfd8ff" stroke-width="3"/>
+        <text x="600" y="110" text-anchor="middle" font-size="11" fill="#8fb6e6" letter-spacing="2">MAIN HOUSE</text>
+        <!-- interior partitions -->
+        <line x1="430" y1="270" x2="770" y2="270" stroke="#8fb6e6" stroke-width="1.5"/>
+        <line x1="540" y1="150" x2="540" y2="408" stroke="#8fb6e6" stroke-width="1.5"/>
+        <line x1="660" y1="150" x2="660" y2="408" stroke="#8fb6e6" stroke-width="1.5"/>
+        <!-- door gaps -->
+        <line x1="540" y1="262" x2="540" y2="278" stroke="#0b1d3a" stroke-width="3"/>
+        <line x1="660" y1="262" x2="660" y2="278" stroke="#0b1d3a" stroke-width="3"/>
+
+        <!-- room zones (heatmap targets) -->
+        <g><rect x="438" y="158" width="100" height="110" class="zf" fill="#0d2040" stroke="#8fb6e6" stroke-width="1"/><text x="488" y="212" class="zl" fill="#bfd8ff" text-anchor="middle">LIVING ROOM</text></g>
+        <g><rect x="542" y="158" width="116" height="110" class="zf" fill="#0d2040" stroke="#8fb6e6" stroke-width="1"/><text x="600" y="212" class="zl" fill="#bfd8ff" text-anchor="middle">KITCHEN</text></g>
+        <g><rect x="662" y="158" width="106" height="110" class="zf" fill="#0d2040" stroke="#8fb6e6" stroke-width="1"/><text x="715" y="212" class="zl" fill="#bfd8ff" text-anchor="middle">SASKIA'S ROOM</text></g>
+        <g><rect x="438" y="272" width="100" height="128" class="zf" fill="#0d2040" stroke="#8fb6e6" stroke-width="1"/><text x="488" y="335" class="zl" fill="#bfd8ff" text-anchor="middle">BEDROOM</text></g>
+        <g><rect x="542" y="272" width="116" height="128" class="zf" fill="#0d2040" stroke="#8fb6e6" stroke-width="1"/><text x="600" y="335" class="zl" fill="#bfd8ff" text-anchor="middle">OFFICE</text></g>
+        <g><rect x="662" y="272" width="106" height="128" class="zf" fill="#0d2040" stroke="#8fb6e6" stroke-width="1"/><text x="715" y="335" class="zl" fill="#bfd8ff" text-anchor="middle">KYAN</text></g>
+      </g>
+
+      <!-- ================= GARAGE ================= -->
+      <g id="garage">
+        <rect x="148" y="470" width="180" height="130" fill="none" stroke="#bfd8ff" stroke-width="3"/>
+        <rect x="154" y="476" width="168" height="118" fill="none" stroke="#8fb6e6" stroke-width="1.5"/>
+        <!-- door -->
+        <rect x="178" y="520" width="60" height="74" fill="#0e2142" stroke="#8fb6e6" stroke-width="1.5"/>
+        <g><rect x="158" y="480" width="162" height="38" class="zf" fill="#0d2040" stroke="#8fb6e6" stroke-width="1"/><text x="239" y="503" class="zl" fill="#bfd8ff" text-anchor="middle">GARAGE</text></g>
+      </g>
+
+      <!-- ================= POOL ================= -->
+      <g id="pool">
+        <rect x="324" y="560" width="120" height="52" rx="8" fill="#0e2a52" stroke="#4cc9f0" stroke-width="2.5"/>
+        <path d="M 336 586 q 12 -8 24 0 q 12 8 24 0 q 12 -8 24 0 q 12 8 24 0" fill="none" stroke="#4cc9f0" stroke-width="1.5" opacity=".7"/>
+        <text x="384" y="546" text-anchor="middle" font-size="11" fill="#4cc9f0" letter-spacing="2">POOL</text>
+      </g>
+
+      <!-- ================= SHED ================= -->
+      <g id="shed">
+        <rect x="772" y="470" width="128" height="96" fill="none" stroke="#bfd8ff" stroke-width="3"/>
+        <line x1="772" y1="470" x2="836" y2="452" stroke="#bfd8ff" stroke-width="2.5"/>
+        <line x1="836" y1="452" x2="900" y2="470" stroke="#bfd8ff" stroke-width="2.5"/>
+        <g><rect x="778" y="478" width="116" height="82" class="zf" fill="#0d2040" stroke="#8fb6e6" stroke-width="1"/><text x="836" y="518" class="zl" fill="#bfd8ff" text-anchor="middle">SHED</text></g>
+      </g>
+
+      <!-- ================= BACKYARD (outdoor zone) ================= -->
+      <g id="backyard">
+        <rect x="772" y="612" width="150" height="150" rx="6" fill="none" stroke="#7ea3cc" stroke-width="2" stroke-dasharray="10 6"/>
+        <g><rect x="778" y="618" width="138" height="138" rx="4" class="zf" fill="#0d2040" stroke="#8fb6e6" stroke-width="1"/><text x="847" y="688" class="zl" fill="#bfd8ff" text-anchor="middle">BACKYARD</text></g>
+      </g>
+
+      <!-- ================= TREES (decor) ================= -->
+      <g stroke="#2e6b4f" fill="none" opacity=".8">
+        <circle cx="130" cy="220" r="18"/><circle cx="130" cy="220" r="9"/>
+        <circle cx="360" cy="170" r="15"/><circle cx="360" cy="170" r="7.5"/>
+        <circle cx="120" cy="800" r="20"/><circle cx="120" cy="800" r="10"/>
+        <circle cx="400" cy="860" r="16"/><circle cx="400" cy="860" r="8"/>
+        <circle cx="640" cy="900" r="22"/><circle cx="640" cy="900" r="11"/>
+        <circle cx="880" cy="860" r="14"/><circle cx="880" cy="860" r="7"/>
+        <circle cx="900" cy="240" r="16"/><circle cx="900" cy="240" r="8"/>
+        <circle cx="560" cy="720" r="13"/><circle cx="560" cy="720" r="6.5"/>
+      </g>
+
+      <!-- ================= DIMENSION + NORTH ================= -->
+      <g stroke="#7ea3cc" stroke-width="1.5" font-size="11" fill="#7ea3cc">
+        <line x1="44" y1="100" x2="44" y2="998"/><line x1="36" y1="100" x2="52" y2="100"/><line x1="36" y1="998" x2="52" y2="998"/>
+        <text x="30" y="555" transform="rotate(-90 30 555)" text-anchor="middle" letter-spacing="2">898</text>
+      </g>
+      <g transform="translate(920,900)">
+        <circle r="26" fill="none" stroke="#7ea3cc" stroke-width="1.5"/>
+        <path d="M 0 -20 L 5 6 L 0 2 L -5 6 Z" fill="#f5c542" stroke="#f5c542"/>
+        <text x="0" y="-28" text-anchor="middle" font-size="13" fill="#f5c542" font-weight="700">N</text>
+        <text x="0" y="40" text-anchor="middle" font-size="10" fill="#7ea3cc" letter-spacing="2">TRUE</text>
+      </g>
+
+      <!-- ================= TITLE BLOCK ================= -->
+      <g>
+        <rect x="620" y="930" width="336" height="92" fill="#0d2040" stroke="#22497f" stroke-width="2"/>
+        <line x1="620" y1="962" x2="956" y2="962" stroke="#22497f"/>
+        <line x1="620" y1="988" x2="956" y2="988" stroke="#22497f"/>
+        <text x="634" y="952" font-size="14" fill="#e6eefc" letter-spacing="3" font-weight="700">BROWNELL RESIDENCE</text>
+        <text x="634" y="980" font-size="10.5" fill="#8fb6e6" letter-spacing="2">CLIMATE HEATMAP · SHELLY H&amp;T ×9</text>
+        <text x="634" y="1006" font-size="10" fill="#7ea3cc">SCALE 1:150 · LIVE /api/overview · 30s</text>
+        <text x="956" y="1006" text-anchor="end" font-size="10" fill="#7ea3cc">REV A</text>
+      </g>
+    </svg>

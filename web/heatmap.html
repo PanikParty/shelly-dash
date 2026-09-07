@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Brownell Residence — Climate Heatmap</title>
+<style>
+  :root{
+    --bg:#0b1d3a; --panel:#0f2547; --line:#bfd8ff; --muted:#7ea3cc;
+    --accent:#4cc9f0; --gold:#f5c542; --text:#e6eefc;
+  }
+  *{box-sizing:border-box; margin:0; padding:0}
+  body{
+    background:var(--bg); color:var(--text);
+    font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    min-height:100vh; padding:14px;
+  }
+  header{
+    display:flex; align-items:center; gap:14px; flex-wrap:wrap;
+    padding:10px 14px; background:var(--panel); border:1px solid #1c3a66;
+    border-radius:8px; margin-bottom:12px;
+  }
+  header h1{font-size:16px; letter-spacing:2px; color:var(--line); font-weight:600}
+  header .sub{color:var(--muted); font-size:12px}
+  header .spacer{flex:1}
+  .btn{
+    background:#12305a; color:var(--line); border:1px solid #22497f;
+    border-radius:6px; padding:5px 10px; font-size:12px; cursor:pointer;
+    font-family:inherit; letter-spacing:1px;
+  }
+  .btn:hover{background:#1a3d6e}
+  .btn.active{background:#1d4a80; border-color:var(--accent); color:#fff}
+  .status{font-size:11px; color:var(--muted)}
+  .status .dot{display:inline-block; width:8px; height:8px; border-radius:50%;
+    background:#555; margin-right:5px; vertical-align:middle}
+  .status.live .dot{background:#34d399}
+  .status.err .dot{background:#f87171}
+  main{display:flex; gap:12px; flex-wrap:wrap; align-items:flex-start}
+  .svgwrap{
+    flex:1 1 640px; background:var(--panel); border:1px solid #1c3a66;
+    border-radius:8px; padding:8px;
+  }
+  svg{width:100%; height:auto; display:block}
+  aside{
+    flex:0 0 260px; display:flex; flex-direction:column; gap:12px;
+  }
+  .card{background:var(--panel); border:1px solid #1c3a66; border-radius:8px; padding:12px}
+  .card h2{font-size:11px; color:var(--muted); letter-spacing:2px; margin-bottom:8px}
+  .legend{display:flex; flex-direction:column; gap:4px}
+  .legend .bar{height:16px; border-radius:4px; border:1px solid #22497f}
+  .legend .lbl{display:flex; justify-content:space-between; font-size:11px; color:var(--line)}
+  .legend .lbl .c{color:var(--gold)}
+  #zonelist{list-style:none; max-height:340px; overflow-y:auto}
+  #zonelist li{
+    display:flex; align-items:center; gap:8px; padding:5px 6px;
+    border-radius:5px; font-size:12px;
+  }
+  #zonelist li:nth-child(odd){background:#0d2040}
+  #zonelist li .sw{width:12px; height:12px; border-radius:3px; border:1px solid #22497f; flex:0 0 12px}
+  #zonelist li .nm{flex:1; color:var(--line)}
+  #zonelist li .vl{color:var(--gold); font-weight:600}
+  #zonelist li.stale .vl{color:#666}
+  #zonelist li.stale .nm{color:#5a7390}
+  .zl{pointer-events:none}   /* zone labels must not swallow hover → tooltips */
+  .tooltip{
+    position:fixed; pointer-events:none; background:#071426; color:var(--line);
+    border:1px solid #22497f; border-radius:6px; padding:8px 10px; font-size:12px;
+    line-height:1.5; display:none; z-index:50; max-width:260px;
+  }
+  .tooltip b{color:var(--gold)}
+  .tooltip .stale-tag{color:#f87171}
+  footer{margin-top:12px; color:var(--muted); font-size:11px; text-align:center}
+</style>
+</head>
+<body>
+<header>
+  <h1>BROWNELL RESIDENCE</h1>
+  <span class="sub">CLIMATE SURVEY · 9× SHELLY H&amp;T</span>
+  <span class="spacer"></span>
+  <a href="/" class="btn" title="Back to dashboard" style="text-decoration:none; line-height:1.6">⌂ DASHBOARD</a>
+  <span id="status" class="status"><span class="dot"></span><span id="statusTxt">connecting…</span></span>
+  <button class="btn" id="btnPause">PAUSE</button>
+  <button class="btn active" id="btnC">°C</button>
+  <button class="btn" id="btnF">°F</button>
+</header>
+<main>
+  <div class="svgwrap" id="svgwrap">
+    <svg id="bp" viewBox="0 0 1000 1060" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Blueprint of Brownell residence with live temperature heatmap">
+      <defs>
+        <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+          <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#12335f" stroke-width="1"/>
+        </pattern>
+        <pattern id="stale" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+          <rect width="8" height="8" fill="#0d2040"/>
+          <rect width="4" height="8" fill="#12284a"/>
+        </pattern>
+        <linearGradient id="heat" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0" stop-color="#3b82f6"/>
+          <stop offset=".18" stop-color="#06b6d4"/>
+          <stop offset=".38" stop-color="#10b981"/>
+          <stop offset=".55" stop-color="#facc15"/>
+          <stop offset=".75" stop-color="#f97316"/>
+          <stop offset="1" stop-color="#ef4444"/>
+        </linearGradient>
+        <filter id="glow"><feGaussianBlur stdDeviation="2" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+      </defs>
+
+      <!-- backdrop + grid -->
+      <rect width="1000" height="1060" fill="var(--bg)"/>
+      <rect width="1000" height="1060" fill="url(#grid)"/>
+
+      <!-- street at top -->
+      <rect x="0" y="16" width="1000" height="64" fill="#0e2142" stroke="none"/>
+      <text x="500" y="56" text-anchor="middle" font-size="15" letter-spacing="6" fill="#5a7390">BROWNELL</text>
+      <line x1="0" y1="80" x2="1000" y2="80" stroke="#5a7390" stroke-width="3" stroke-dasharray="14 8"/>
+
+      <!-- property boundary -->
+      <rect x="44" y="100" width="912" height="698" fill="none" stroke="#7ea3cc" stroke-width="2.5" stroke-dasharray="18 8"/>
+
+      <!-- ================= DRIVEWAY ================= -->
+      <path d="M 250 80 L 245 230 L 330 235 L 335 80 Z" fill="#0e2142" stroke="#7ea3cc" stroke-width="1.5"/>
+      <text x="287" y="160" transform="rotate(86 287 160)" font-size="11" fill="#5a7390" letter-spacing="3">DRIVEWAY</text>
+
+      <!-- ================= MAIN HOUSE =================
+           Layout per owner (facing Brownell, left-to-right):
+           row 1 (street): Office · LivingRoom · Saskia
+           row 2:          Garage · Kitchen · Kyan
+           row 3:          Bedroom (behind Kyan) -->
+      <g id="house">
+        <rect x="410" y="100" width="446" height="236" fill="none" stroke="#bfd8ff" stroke-width="3"/>
+        <rect x="416" y="106" width="434" height="224" fill="none" stroke="#8fb6e6" stroke-width="1.5"/>
+        <text x="633" y="94" text-anchor="middle" font-size="11" fill="#8fb6e6" letter-spacing="2">MAIN HOUSE</text>
+        <!-- interior partitions -->
+        <line x1="559" y1="100" x2="559" y2="336" stroke="#8fb6e6" stroke-width="1.5"/>
+        <line x1="707" y1="100" x2="707" y2="336" stroke="#8fb6e6" stroke-width="1.5"/>
+        <line x1="410" y1="179" x2="856" y2="179" stroke="#8fb6e6" stroke-width="1.5"/>
+        <line x1="410" y1="257" x2="856" y2="257" stroke="#8fb6e6" stroke-width="1.5"/>
+        <!-- door gaps -->
+        <line x1="559" y1="171" x2="559" y2="187" stroke="var(--bg)" stroke-width="3"/>
+        <line x1="707" y1="249" x2="707" y2="265" stroke="var(--bg)" stroke-width="3"/>
+
+        <!-- room zones (heatmap targets) -->
+        <g class="zone" data-device="3030f9e70e24"><rect x="416" y="106" width="137" height="67" class="zf"/><text x="487" y="143" class="zl" text-anchor="middle">OFFICE</text></g>
+        <g class="zone" data-device="dcda0cb72608"><rect x="565" y="106" width="136" height="67" class="zf"/><text x="633" y="143" class="zl" text-anchor="middle">LIVING ROOM</text></g>
+        <g class="zone" data-device="5432046280b8"><rect x="713" y="106" width="137" height="67" class="zf"/><text x="778" y="143" class="zl" text-anchor="middle">SASKIA'S ROOM</text></g>
+        <g class="zone" data-device="441793d0c5f8"><rect x="416" y="185" width="137" height="66" class="zf"/><text x="487" y="222" class="zl" text-anchor="middle">GARAGE</text></g>
+        <g class="zone" data-device="c049ef89095c"><rect x="565" y="185" width="136" height="66" class="zf"/><text x="633" y="222" class="zl" text-anchor="middle">KITCHEN</text></g>
+        <g class="zone" data-device="543204577478"><rect x="713" y="185" width="137" height="66" class="zf"/><text x="778" y="222" class="zl" text-anchor="middle">KYAN</text></g>
+        <g class="zone" data-device="c049ef890fcc"><rect x="713" y="263" width="137" height="67" class="zf"/><text x="778" y="301" class="zl" text-anchor="middle">BEDROOM</text></g>
+      </g>
+
+      <!-- (garage integrated into house row 2 per owner; pool removed — not visible in aerial) -->
+
+      <!-- ================= SHED (moved toward back-east, per owner) ================= -->
+      <g id="shed">
+        <rect x="800" y="460" width="128" height="96" fill="none" stroke="#bfd8ff" stroke-width="3"/>
+        <line x1="800" y1="460" x2="864" y2="444" stroke="#bfd8ff" stroke-width="2.5"/>
+        <line x1="864" y1="444" x2="928" y2="460" stroke="#bfd8ff" stroke-width="2.5"/>
+        <g class="zone" data-device="dcda0cb75968"><rect x="806" y="468" width="116" height="82" class="zf"/><text x="864" y="512" class="zl" text-anchor="middle">SHED</text></g>
+      </g>
+
+      <!-- ================= BACKYARD (outdoor sensor, behind shed toward back boundary) ================= -->
+      <g id="backyard">
+        <rect x="806" y="570" width="144" height="96" rx="6" fill="none" stroke="#7ea3cc" stroke-width="2" stroke-dasharray="10 6"/>
+        <g class="zone" data-device="dcda0cb70a50"><rect x="812" y="576" width="132" height="84" rx="4" class="zf"/><text x="878" y="624" class="zl" text-anchor="middle">BACKYARD</text></g>
+      </g>
+
+      <!-- ================= TREES (decor) ================= -->
+      <g stroke="#2e6b4f" fill="none" opacity=".8">
+        <circle cx="130" cy="220" r="18"/><circle cx="130" cy="220" r="9"/>
+        <circle cx="360" cy="170" r="15"/><circle cx="360" cy="170" r="7.5"/>
+        <circle cx="120" cy="600" r="20"/><circle cx="120" cy="600" r="10"/>
+        <circle cx="400" cy="660" r="16"/><circle cx="400" cy="660" r="8"/>
+        <circle cx="640" cy="700" r="22"/><circle cx="640" cy="700" r="11"/>
+        <circle cx="760" cy="700" r="14"/><circle cx="760" cy="700" r="7"/>
+        <circle cx="900" cy="240" r="16"/><circle cx="900" cy="240" r="8"/>
+        <circle cx="560" cy="520" r="13"/><circle cx="560" cy="520" r="6.5"/>
+      </g>
+
+      <!-- ================= DIMENSION + NORTH ================= -->
+      <g stroke="#7ea3cc" stroke-width="1.5" font-size="11" fill="#7ea3cc">
+        <line x1="44" y1="100" x2="44" y2="798"/><line x1="36" y1="100" x2="52" y2="100"/><line x1="36" y1="798" x2="52" y2="798"/>
+        <text x="30" y="449" transform="rotate(-90 30 449)" text-anchor="middle" letter-spacing="2">698</text>
+      </g>
+      <g transform="translate(560,900)">
+        <circle r="26" fill="none" stroke="#7ea3cc" stroke-width="1.5"/>
+        <!-- N rotated 93° CW per owner — real east ≈ bottom of page -->
+        <g transform="rotate(93)">
+          <path d="M 0 -20 L 5 6 L 0 2 L -5 6 Z" fill="#f5c542" stroke="#f5c542"/>
+          <text x="0" y="-28" text-anchor="middle" font-size="13" fill="#f5c542" font-weight="700" transform="rotate(-93 0 -28)">N</text>
+        </g>
+        <text x="0" y="40" text-anchor="middle" font-size="10" fill="#7ea3cc" letter-spacing="2">TRUE</text>
+      </g>
+
+      <!-- ================= TITLE BLOCK ================= -->
+      <g>
+        <rect x="620" y="930" width="336" height="92" fill="#0d2040" stroke="#22497f" stroke-width="2"/>
+        <line x1="620" y1="962" x2="956" y2="962" stroke="#22497f"/>
+        <line x1="620" y1="988" x2="956" y2="988" stroke="#22497f"/>
+        <text x="634" y="952" font-size="14" fill="#e6eefc" letter-spacing="3" font-weight="700">BROWNELL RESIDENCE</text>
+        <text x="634" y="980" font-size="10.5" fill="#8fb6e6" letter-spacing="2">CLIMATE HEATMAP · SHELLY H&amp;T ×9</text>
+        <text x="634" y="1006" font-size="10" fill="#7ea3cc">SCALE 1:150 · LIVE /api/overview · 30s</text>
+        <text x="956" y="1006" text-anchor="end" font-size="10" fill="#7ea3cc">REV E</text>
+      </g>
+    </svg>
+  </div>
+
+  <aside>
+    <div class="card">
+      <h2>HEAT SCALE — °C</h2>
+      <div class="legend">
+        <div class="bar" style="background:linear-gradient(90deg,#3b82f6,#06b6d4,#10b981,#facc15,#f97316,#ef4444)"></div>
+        <div class="lbl"><span>15</span><span>20</span><span>25</span><span>30</span><span class="c">35</span></div>
+      </div>
+    </div>
+    <div class="card">
+      <h2>ZONES</h2>
+      <ul id="zonelist"></ul>
+    </div>
+  </aside>
+</main>
+<div class="tooltip" id="tip"></div>
+<footer>Data: shelly-dash collector · g9.local:8088 · blueprint geometry traced from aerial (Brownell-Aerial.png)</footer>
+
+<script>
+"use strict";
+const API = "/api/overview";
+const C = { lo: 15, hi: 35 };          // fixed heat scale in °C
+const STALE_S = 6 * 3600;             // mark zone stale if latest sample older than this
+const REFRESH_MS = 30000;
+
+const svg = document.getElementById("bp");
+const tip = document.getElementById("tip");
+const statusEl = document.getElementById("status");
+const statusTxt = document.getElementById("statusTxt");
+const listEl = document.getElementById("zonelist");
+
+let useF = false, paused = false, timer = null, lastData = null;
+
+/* ---------- heat color ---------- */
+function heatColor(t){
+  const u = Math.max(0, Math.min(1, (t - C.lo) / (C.hi - C.lo)));
+  const stops = [
+    [0.00, [59,130,246]], [0.18, [6,182,212]], [0.38, [16,185,129]],
+    [0.55, [250,204,21]], [0.75, [249,115,22]], [1.00, [239,68,68]]
+  ];
+  let a = stops[0], b = stops[stops.length-1];
+  for (let i = 0; i < stops.length - 1; i++){
+    if (u >= stops[i][0] && u <= stops[i+1][0]){ a = stops[i]; b = stops[i+1]; break; }
+  }
+  const f = (u - a[0]) / (b[0] - a[0] || 1);
+  const ch = a[1].map((v,i) => Math.round(v + (b[1][i] - v) * f));
+  return `rgb(${ch[0]},${ch[1]},${ch[2]})`;
+}
+
+/* ---------- temp formatting ---------- */
+function fmtT(t){
+  if (t === null || t === undefined) return "—";
+  const v = useF ? t * 9/5 + 32 : t;
+  return v.toFixed(1) + (useF ? "°F" : "°C");
+}
+
+/* ---------- paint zones from /api/overview ---------- */
+function paint(){
+  if (!lastData) return;
+  const now = lastData.now * 1000;
+  const byId = {};
+  lastData.devices.forEach(d => byId[d.device_id] = d);
+
+  document.querySelectorAll(".zone").forEach(g => {
+    const id = g.dataset.device;
+    const d = byId[id];
+    const zf = g.querySelector(".zf");
+    const zl = g.querySelector(".zl");
+    let fill, txt, stale = true;
+    if (d && d.latest){
+      const ageMs = now - d.latest.ts * 1000;
+      stale = ageMs > STALE_S * 1000;
+      fill = heatColor(d.latest.t_c);
+      txt = fmtT(d.latest.t_c);
+      zf.setAttribute("fill", fill);
+      zf.setAttribute("fill-opacity", stale ? "0.08" : "0.30");
+      zf.setAttribute("stroke", stale ? "#5a7390" : fill);
+      zf.setAttribute("stroke-width", stale ? "1" : "2");
+      zl.textContent = stale ? txt + " · STALE" : txt;
+      zl.setAttribute("fill", stale ? "#5a7390" : "#ffffff");
+    } else {
+      zf.setAttribute("fill", "url(#stale)");
+      zf.setAttribute("fill-opacity", "0.7");
+      zf.setAttribute("stroke", "#5a7390");
+      zf.setAttribute("stroke-width", "1");
+      zl.textContent = "NO DATA";
+      zl.setAttribute("fill", "#5a7390");
+    }
+    g.classList.toggle("stale", stale);
+  });
+
+  /* zone list */
+  const rows = [];
+  lastData.devices.forEach(d => {
+    const st = d.latest ? (now - d.latest.ts*1000 > STALE_S*1000) : true;
+    const t = d.latest ? d.latest.t_c : null;
+    rows.push({ id: d.device_id, name: d.name || d.device_id, t, st,
+                rh: d.latest ? d.latest.rh : null, bat: d.latest ? d.latest.bat_pct : null,
+                ts: d.latest ? d.latest.ts : null });
+  });
+  rows.sort((x,y) => (x.t ?? -99) - (y.t ?? -99));
+  listEl.innerHTML = rows.map(r => {
+    const color = r.t !== null ? heatColor(r.t) : "#223";
+    const age = r.ts ? Math.round((now/1000 - r.ts)/60) : null;
+    const extra = [];
+    if (r.rh !== null) extra.push("RH " + r.rh.toFixed(0) + "%");
+    if (r.bat !== null) extra.push("⚡" + r.bat.toFixed(0) + "%");
+    if (r.ts !== null) extra.push(age + "m ago");
+    return `<li class="${r.st?'stale':''}" data-id="${r.id}">
+      <span class="sw" style="background:${color}"></span>
+      <span class="nm">${r.name}</span>
+      <span class="vl">${fmtT(r.t)}${extra.length?` <span style="color:#5a7390;font-size:10px">· ${extra.join(" · ")}</span>`:""}</span>
+    </li>`;
+  }).join("");
+}
+
+/* ---------- tooltip ---------- */
+function showTip(d, ev){
+  const id = d.dataset.device;
+  if (!lastData) return;
+  const dev = lastData.devices.find(x => x.device_id === id);
+  if (!dev) return;
+  let html = `<b>${dev.name || id}</b><br><span style="color:#5a7390">${id}</span>`;
+  if (dev.latest){
+    const ageMin = Math.round((lastData.now - dev.latest.ts)/60);
+    html += `<br>Temp: <b>${fmtT(dev.latest.t_c)}</b>`;
+    html += `<br>Humidity: ${dev.latest.rh != null ? dev.latest.rh.toFixed(0)+"%" : "—"}`;
+    html += `<br>Battery: ${dev.latest.bat_pct != null ? dev.latest.bat_pct.toFixed(0)+"%" : "—"}`;
+    html += `<br>RSSI: ${dev.latest.rssi ?? "—"} dBm`;
+    html += `<br>Last: ${ageMin}m ago`;
+    if (ageMin > STALE_S/60) html += ` <span class="stale-tag">· STALE</span>`;
+  } else {
+    html += `<br><span class="stale-tag">no samples yet</span>`;
+  }
+  tip.innerHTML = html;
+  tip.style.display = "block";
+  const r = tip.getBoundingClientRect();
+  tip.style.left = Math.min(ev.clientX + 12, window.innerWidth - r.width - 8) + "px";
+  tip.style.top = (ev.clientY + 14) + "px";
+}
+function hideTip(){ tip.style.display = "none"; }
+
+document.querySelectorAll(".zone").forEach(g => {
+  g.addEventListener("mousemove", ev => showTip(g, ev));
+  g.addEventListener("mouseleave", hideTip);
+});
+document.querySelectorAll("#zonelist li").forEach(li => {
+  li.addEventListener("mouseenter", () => {});
+});
+
+/* ---------- fetch ---------- */
+async function refresh(){
+  if (paused) return;
+  try{
+    const res = await fetch(API, { cache: "no-store" });
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    lastData = await res.json();
+    statusEl.className = "status live";
+    const t = new Date(lastData.now * 1000);
+    const fresh = lastData.devices.filter(d => d.latest &&
+      lastData.now - d.latest.ts <= STALE_S).length;
+    statusTxt.textContent = `LIVE · ${fresh}/${lastData.devices.length} fresh · ${t.toLocaleTimeString()}`;
+    paint();
+  }catch(e){
+    statusEl.className = "status err";
+    statusTxt.textContent = "API unreachable: " + e.message;
+  }
+}
+
+/* ---------- controls ---------- */
+document.getElementById("btnC").addEventListener("click", () => {
+  useF = false;
+  document.getElementById("btnC").classList.add("active");
+  document.getElementById("btnF").classList.remove("active");
+  paint();
+});
+document.getElementById("btnF").addEventListener("click", () => {
+  useF = true;
+  document.getElementById("btnF").classList.add("active");
+  document.getElementById("btnC").classList.remove("active");
+  paint();
+});
+document.getElementById("btnPause").addEventListener("click", ev => {
+  paused = !paused;
+  ev.target.classList.toggle("active", paused);
+  ev.target.textContent = paused ? "RESUME" : "PAUSE";
+  if (!paused) refresh();
+});
+
+refresh();
+timer = setInterval(refresh, REFRESH_MS);
+</script>
+</body>
+</html>
