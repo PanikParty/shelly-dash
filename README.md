@@ -77,7 +77,10 @@ Key behaviors:
   forecast, with the **Shed / any outdoor sensor measured trace overlaid** as
   dots so local reality is compared against the model on the same axis.
   Ranges 48H / 1W / 2W / 4W / ALL, °F ⇄ °C toggle, sensor dropdown (any
-  device — indoor vs outdoor spread), hover crosshair + tooltip. The weather
+  device — indoor vs outdoor spread), hover crosshair + tooltip. Under each
+  now-stat (model and measured sensor): trend arrow vs the previous reading
+  (with the real sample interval) plus a delta vs the same time yesterday.
+  The weather
   model is fetched by the server (`/api/weather`) and TTL-cached 15 min, so
   the page never hammers the upstream API.
 - Pause/resume live refresh, refresh interval select (10 s – 5 m),

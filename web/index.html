@@ -166,6 +166,13 @@
   .wstats .ws .k { font-size: 10px; color: var(--dim); text-transform: uppercase; letter-spacing: .5px; }
   .wstats .ws .v { font-size: 15px; font-variant-numeric: tabular-nums; }
   .wstats .ws .v .u { font-size: 10px; color: var(--dim); }
+  .wstats .ws .vsub { font-size: 10px; color: var(--faint); line-height: 1.5;
+    font-variant-numeric: tabular-nums; display: flex; flex-direction: column; align-items: flex-end; }
+  .wstats .ws .vsub .d1 { font-size: 11px; }
+  .wstats .ws .vsub .d1 .up { color: var(--up); }
+  .wstats .ws .vsub .d1 .dn { color: var(--dn); }
+  .wstats .ws .vsub .d1 .tag { color: var(--faint); font-size: 10px; }
+  .wstats .ws .vsub .na { color: var(--faint); font-size: 10px; }
   #w-unit { padding: 4px 9px; }
   select#w-sel {
     font-family: var(--mono); font-size: 11px; color: var(--fg);
@@ -225,8 +232,10 @@
       <span class="wloc">Open-Meteo · Bay Park (32.79,-117.19) · past + 16d forecast</span>
     </div>
     <div class="wstats">
-      <div class="ws"><span class="k" id="w-src"></span><span class="v" id="w-now">—</span></div>
-      <div class="ws"><span class="k" id="w-local-lbl">local sensor</span><span class="v" id="w-local">—</span></div>
+      <div class="ws"><span class="k" id="w-src"></span><span class="v" id="w-now">—</span>
+        <div class="vsub" id="w-vsub-m" title="▲▼ trend vs previous reading · second delta vs same time yesterday"></div></div>
+      <div class="ws"><span class="k" id="w-local-lbl">local sensor</span><span class="v" id="w-local">—</span>
+        <div class="vsub" id="w-vsub-l" title="▲▼ trend vs previous reading · second delta vs same time yesterday"></div></div>
       <button id="w-unit" title="Toggle °F / °C">°F</button>
       <select id="w-sel" title="Sensor to overlay on the model"></select>
     </div>
@@ -807,6 +816,23 @@ function wBounds(){
 function wFmtNow(ts){
   return new Date(ts*1000).toLocaleString([], {month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"});
 }
+function durLbl(sec){
+  sec = Math.round(sec/60)*60;                 // minute precision
+  if(sec < 3600) return Math.round(sec/60)+"m";
+  if(sec < 86400){
+    const h = Math.floor(sec/3600), m = Math.round((sec%3600)/60);
+    return m ? h+"h"+String(m).padStart(2,"0")+"m" : h+"h";
+  }
+  return (sec/86400).toFixed(1)+"d";
+}
+function nearestTsPair(arr, target){           // arr: [[ts,val]] asc; closest ts
+  if(!arr.length) return null;
+  let lo=0, hi=arr.length-1;
+  while(lo<hi){ const mid=(lo+hi)>>1; if(arr[mid][0]<target) lo=mid+1; else hi=mid; }
+  const a=arr[lo];
+  if(lo>0 && Math.abs(target-arr[lo-1][0]) < Math.abs(target-a[0])) return arr[lo-1];
+  return a;
+}
 async function loadWeather(){
   const req = ++wstate.req;
   const q = wstate.devId ? `?device=${encodeURIComponent(wstate.devId)}&past_days=14&forecast_days=16`
@@ -835,15 +861,44 @@ function paintWeather(){
   // header stats
   const nowPt = mTPast.length ? mTPast[mTPast.length-1] : (mTFc[0] || null);
   const localPt = lT.length ? lT[lT.length-1] : null;
-  $("w-src").textContent = localPt
-    ? `${d.local.name || "sensor"} · ${wDeg()}`
-    : `model now · ${wDeg()}`;
+  $("w-src").textContent = `model · ${wDeg()}`;
   $("w-src2").innerHTML =
     `model ${d.model.source} · generated ${wFmtNow(d.model.generated)} · ` +
     (d.error ? `<span class="err">${d.error}</span>` : `updated ${wFmtNow(d.model.generated)}`);
   $("w-now").innerHTML = nowPt ? `${fmt(nowPt[1],1)}<span class="u">${wDeg()} model</span>` : "—";
   $("w-local").innerHTML = localPt ? `${fmt(localPt[1],1)}<span class="u">${wDeg()} local</span>` : "<span class='u'>no local data</span>";
   $("w-local-lbl").textContent = (d.local && d.local.name) ? d.local.name : "local sensor";
+  $("w-unit").textContent = wDeg();
+  // sub-deltas — trend vs previous reading + same-time-yesterday. Computed on
+  // the FULL series (window-independent) so 48H zoom still shows yesterday.
+  const deg = wDeg();
+  // model observed series (display unit, asc by ts)
+  const mFull = mpts.filter(r => r.ts<=now && r.t_f!=null).map(r => [r.ts, wUnit(r.t_f,"F")]);
+  // sensor series over everything we have for this device (display unit)
+  const lFull = local.filter(r => r.t_c!=null).map(r => [r.ts, wUnit(r.t_c,"C")]);
+  const d1 = (dv, tag, have) => have
+    ? `<div class="d1"><span class="${dv>0.05?"up":dv<-0.05?"dn":""}">${dv>0.05?"▲":dv<-0.05?"▼":"·"} ${fmt(Math.abs(dv),1)}${deg}</span> <span class="tag">${tag}</span></div>`
+    : `<div class="d1"><span class="na">${tag}</span></div>`;
+  // --- model column ---
+  let subM = "";
+  if(mFull.length>=2){
+    const c=mFull[mFull.length-1], p=mFull[mFull.length-2];
+    subM += d1(c[1]-p[1], `trend ${durLbl(c[0]-p[0])}`, true);
+    const y = nearestTsPair(mFull, c[0]-86400);
+    const yOk = y && Math.abs((c[0]-86400)-y[0]) < 7200;
+    subM += d1(yOk ? c[1]-y[1] : 0, "vs yesterday", yOk);
+  } else subM = d1(0, "trend", false) + d1(0, "vs yesterday", false);
+  $("w-vsub-m").innerHTML = subM;
+  // --- sensor column ---
+  let subL = "";
+  if(lFull.length>=2){
+    const c=lFull[lFull.length-1], p=lFull[lFull.length-2];
+    subL += d1(c[1]-p[1], `trend ${durLbl(c[0]-p[0])}`, true);
+    const y = nearestTsPair(lFull, c[0]-86400);
+    const yOk = y && Math.abs((c[0]-86400)-y[0]) < 3*3600;
+    subL += d1(yOk ? c[1]-y[1] : 0, "vs yesterday", yOk);
+  } else subL = d1(0, "trend", false) + d1(0, "vs yesterday", false);
+  $("w-vsub-l").innerHTML = subL;
   $("w-unit").textContent = wDeg();
   // lanes
   drawWeatherLane($("w-lane-t"), [
