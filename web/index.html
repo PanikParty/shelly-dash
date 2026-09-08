@@ -912,6 +912,13 @@ function bindWeatherHover(){
   const lanes=$("w-lanes"); if(!lanes || lanes.dataset.wbind) return;
   lanes.dataset.wbind="1";
   const ch=$("w-ch"), tip=$("w-tip");
+  const sampTime = (ts, refTs) => {
+    const d = new Date(ts*1000), r = new Date(refTs*1000);
+    const sameDay = d.getFullYear()===r.getFullYear() && d.getMonth()===r.getMonth() && d.getDate()===r.getDate();
+    return d.toLocaleString([], sameDay
+      ? {hour:"2-digit", minute:"2-digit"}
+      : {month:"short", day:"numeric", hour:"2-digit", minute:"2-digit"});
+  };
   lanes.addEventListener("pointermove", e => {
     if(!wstate.data || !wstate.data.model || !wstate.data.model.points.length){ hideWeatherHover(); return; }
     const lr=lanes.getBoundingClientRect();
@@ -931,12 +938,31 @@ function bindWeatherHover(){
     const valT = nearestSample(m, i0, "t_f", ts);
     const valH = nearestSample(m, i0, "rh", ts);
     const loc = (wstate.data.local && wstate.data.local.points) || [];
-    const lT = loc.length ? nearestSample(loc, Math.min(i0, loc.length-1), "t_c", ts) : null;
-    const lH = loc.length ? nearestSample(loc, Math.min(i0, loc.length-1), "rh", ts) : null;
+    // local samples are sparse + irregular: bisect the LOCAL array on its own
+    // timestamps (NOT a clamped index borrowed from the hourly model array),
+    // and only report a measurement whose own time is at or before the cursor
+    // — never a sample from after the cursor, and nothing in the forecast.
+    let lT=null, lH=null, lTs=null;
+    if(loc.length){
+      const iL = bisectRows(loc, ts);
+      const li = iL<loc.length ? iL : loc.length-1;      // first local sample >= ts
+      const cand = li>=0 && loc[li].ts<=ts ? loc[li]     // exact/earlier sample
+                 : (li>0 ? loc[li-1] : loc[0]);          // or the one just before
+      if(cand && cand.ts<=ts && cand.ts>=win.from){
+        lTs = cand.ts;
+        lT = cand.t_c!=null ? cand.t_c : null;
+        lH = cand.rh!=null ? cand.rh : null;
+      }
+    }
+    const lName = (wstate.data.local && wstate.data.local.name) || "local";
     rows.push(`<div class="tr"><span><span class="td" style="background:${fc?WCOL.forecast:WCOL.model}"></span>model${fc?" (forecast)":""}</span><span>${valT!=null?fmt(wUnit(valT,"F"),1):"—"} ${wDeg()}</span></div>`);
     rows.push(`<div class="tr"><span style="color:var(--faint)">model RH</span><span>${valH!=null?fmt(valH,0):"—"} %RH</span></div>`);
-    rows.push(`<div class="tr"><span><span class="td" style="background:${WCOL.localT}"></span>${(wstate.data.local&&wstate.data.local.name)||"local"}</span><span>${lT!=null?fmt(wUnit(lT,"C"),1):"—"} ${wDeg()}</span></div>`);
-    rows.push(`<div class="tr"><span><span class="td" style="background:${WCOL.localH}"></span>local RH</span><span>${lH!=null?fmt(lH,0):"—"} %RH</span></div>`);
+    if(fc || lTs==null){
+      rows.push(`<div class="tr"><span><span class="td" style="background:${WCOL.localT}"></span>${lName}</span><span style="color:var(--faint)">no sample yet</span></div>`);
+    }else{
+      rows.push(`<div class="tr"><span><span class="td" style="background:${WCOL.localT}"></span>${lName} @ ${sampTime(lTs, ts)}</span><span>${lT!=null?fmt(wUnit(lT,"C"),1):"—"} ${wDeg()}</span></div>`);
+      rows.push(`<div class="tr"><span style="color:var(--faint)">local RH @ ${sampTime(lTs, ts)}</span><span>${lH!=null?fmt(lH,0):"—"} %RH</span></div>`);
+    }
     tip.innerHTML=`<div class="tt">${wFmtNow(ts)}${fc?" · forecast":" · now/observed"}</div>${rows.join("")}`;
     tip.style.display="block";
     const tw=tip.offsetWidth, th=tip.offsetHeight;
