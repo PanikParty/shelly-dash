@@ -151,6 +151,48 @@
   footer a { color: var(--accent); text-decoration: none; }
   footer a:hover { text-decoration: underline; }
   @media (max-width: 640px) { .mblk .v { font-size: 24px; } }
+
+  /* ============ weather & forecast footer panel ============ */
+  .wcard {
+    margin: 0 16px 16px; background: var(--panel);
+    border: 1px solid var(--edge); border-radius: 8px;
+    padding: 12px 14px; display: flex; flex-direction: column; gap: 8px;
+  }
+  .whead { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+  .whead .wt { font-size: 14px; font-weight: 600; letter-spacing: .4px; display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+  .whead .wloc { color: var(--dim); font-size: 11px; font-weight: 400; }
+  .wstats { margin-left: auto; display: flex; gap: 18px; align-items: center; flex-wrap: wrap; }
+  .wstats .ws { display: flex; flex-direction: column; align-items: flex-end; }
+  .wstats .ws .k { font-size: 10px; color: var(--dim); text-transform: uppercase; letter-spacing: .5px; }
+  .wstats .ws .v { font-size: 15px; font-variant-numeric: tabular-nums; }
+  .wstats .ws .v .u { font-size: 10px; color: var(--dim); }
+  #w-unit { padding: 4px 9px; }
+  select#w-sel {
+    font-family: var(--mono); font-size: 11px; color: var(--fg);
+    background: var(--panel2); border: 1px solid var(--edge);
+    border-radius: 6px; padding: 4px 6px; max-width: 150px;
+  }
+  select#w-sel:hover { border-color: var(--accent); }
+  .wmeta { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .wmeta .src { color: var(--faint); font-size: 10px; text-align: right; }
+  .wmeta .src .err { color: var(--red); }
+  .wlegend { display: flex; gap: 18px; font-size: 10px; color: var(--dim);
+    text-transform: uppercase; letter-spacing: .08em; flex-wrap: wrap; }
+  .wlegend .sw { display: inline-flex; align-items: center; gap: 6px; }
+  .wlegend .sw i { width: 16px; display: inline-block; }
+  .wlegend .sw i.solid { border-top: 2px solid; }
+  .wlegend .sw i.dash { border-top: 2px dashed; }
+  .wlanes { position: relative; border: 1px solid var(--edge); border-radius: 8px;
+    overflow: hidden; background: var(--panel2); }
+  .wlane { position: relative; border-bottom: 1px solid var(--edge); }
+  .wlane:last-of-type { border-bottom: 0; }
+  .wlane canvas { display: block; width: 100%; height: clamp(120px, 22vh, 190px); }
+  .wlane .lname { position: absolute; top: 8px; left: 12px; z-index: 2; font-size: 10px;
+    letter-spacing: .12em; text-transform: uppercase; color: var(--dim); pointer-events: none; }
+  .wlane .lext { position: absolute; top: 8px; right: 12px; z-index: 2; text-align: right;
+    font-size: 10px; color: var(--faint); pointer-events: none; line-height: 1.5;
+    font-variant-numeric: tabular-nums; }
+  .wcard .tooltip { min-width: 190px; }
 </style>
 </head>
 <body>
@@ -177,6 +219,33 @@
 </header>
 <div id="grid"><div class="empty">Waiting for Shelly sensors to wake and report…</div></div>
 <div id="backdrop"></div>
+<section class="wcard" id="wcard">
+  <div class="whead">
+    <div class="wt"><span style="color:var(--accent)">◔</span> Weather &amp; forecast
+      <span class="wloc">Open-Meteo · Bay Park (32.79,-117.19) · past + 16d forecast</span>
+    </div>
+    <div class="wstats">
+      <div class="ws"><span class="k" id="w-src"></span><span class="v" id="w-now">—</span></div>
+      <div class="ws"><span class="k" id="w-local-lbl">local sensor</span><span class="v" id="w-local">—</span></div>
+      <button id="w-unit" title="Toggle °F / °C">°F</button>
+      <select id="w-sel" title="Sensor to overlay on the model"></select>
+    </div>
+  </div>
+  <div class="wmeta">
+    <div class="ranges" id="w-ranges"></div>
+    <div class="src" id="w-src2"></div>
+  </div>
+  <div class="wlegend" id="w-legend"></div>
+  <div class="wlanes" id="w-lanes">
+    <div class="wlane"><span class="lname">Temperature</span><span class="lext" id="w-lext-t"></span>
+      <canvas id="w-lane-t"></canvas></div>
+    <div class="wlane"><span class="lname">Humidity</span><span class="lext" id="w-lext-h"></span>
+      <canvas id="w-lane-h"></canvas></div>
+    <div class="xaxis"><canvas id="w-xaxis"></canvas></div>
+    <div class="crosshair" id="w-ch"></div>
+    <div class="tooltip" id="w-tip"></div>
+  </div>
+</section>
 <footer>shellydash — property climate · mDNS-discovered Shelly sensors ·
   <a href="/api/export.csv">export csv</a> · api: /api/overview /api/samples /api/stats ·
   double-click a sensor name to rename it · <span id="ts"></span></footer>
@@ -435,6 +504,7 @@ function render(){
   if(state.maxId && !$("card-"+state.maxId)){ const gone=state.maxId; state.maxId=null; closeMax(); }
   if(state.maxId && $("card-"+state.maxId)) paintMaxHead();
   paintHeader();
+  refreshWeather();
 }
 
 /* ================= maximized ================= */
@@ -691,6 +761,233 @@ $("pauseBtn").onclick = () => {
 $("refreshSel").onchange = () => {
   state.refreshMs = +$("refreshSel").value; saveUI(); arm();
 };
+
+/* ============ weather & forecast footer panel ============ */
+const WRANGES = [
+  ["48H",  1,  1],
+  ["1W",   3,  4],
+  ["2W",   7,  7],
+  ["4W",  14, 16],
+  ["ALL", -1, -1],
+];
+const WCOL = {
+  model: "#8b98a9",          // dim — model (hindcast, past)
+  forecast: "#39c5cf",       // cyan — model forecast (future, dashed)
+  localT: "#e8a33d",         // amber — measured sensor temperature
+  localH: "#5aa9e6",         // blue  — measured sensor humidity
+};
+const wstate = {
+  data: null, unit: "F", rng: WRANGES[3], devId: null, req: 0, timer: null,
+  wSelBuilt: false, lastDevSig: "", started: false,
+};
+function wUnit(v, from){  // from "F" or "C" to wstate.unit
+  if(from === wstate.unit) return v;
+  return from === "F" ? (v-32)*5/9 : v*9/5+32;
+}
+function wDeg(){ return wstate.unit === "F" ? "°F" : "°C"; }
+function wClipRows(rows, from, to){
+  return rows.filter(r => r.ts >= from && r.ts <= to);
+}
+function wTempPts(rows, key, from, to){  // rows -> [[ts, val]] in display unit
+  return wClipRows(rows, from, to).filter(r => r[key]!=null)
+    .map(r => [r.ts, +wUnit(r[key], key==="t_c" ? "C" : "F").toFixed(1)]);
+}
+function wRhPts(rows, from, to){
+  return wClipRows(rows, from, to).filter(r => r.rh!=null).map(r => [r.ts, +r.rh.toFixed(0)]);
+}
+function wBounds(){
+  const m = wstate.data.model.points;
+  const first = m[0].ts, last = m[m.length-1].ts, now = wstate.data.now;
+  let from, to;
+  if(wstate.rng[1] === -1){ from = first - 3600; to = last + 3600; }
+  else { from = now - wstate.rng[1]*86400; to = now + wstate.rng[2]*86400; }
+  if(to - from < 3600) to = from + 3600;
+  return {from, to, now};
+}
+function wFmtNow(ts){
+  return new Date(ts*1000).toLocaleString([], {month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"});
+}
+async function loadWeather(){
+  const req = ++wstate.req;
+  const q = wstate.devId ? `?device=${encodeURIComponent(wstate.devId)}&past_days=14&forecast_days=16`
+                         : "?past_days=14&forecast_days=16";
+  try{
+    const res = await (await fetch("/api/weather"+q)).json();
+    if(req !== wstate.req) return;
+    wstate.data = res;
+    paintWeather();
+  }catch(e){ /* next retry */ }
+}
+function paintWeather(){
+  const d = wstate.data; if(!d || !d.model || !d.model.points || !d.model.points.length) return;
+  const {from,to,now} = wBounds();
+  const mpts = d.model.points;
+  // model split: hindcast solid (ts<=now), forecast dashed (ts>=now)
+  const mPast = mpts.filter(r => r.ts <= now);
+  const mFc   = mpts.filter(r => r.ts >= now);
+  const local = (d.local && d.local.points) || [];
+  const lT = wTempPts(local, "t_c", from, to);
+  const lH = wRhPts(local, from, to);
+  const mTPast = wTempPts(mPast, "t_f", from, to);
+  const mTFc   = wTempPts(mFc,  "t_f", from, to);
+  const mHPast = wRhPts(mPast, from, to);
+  const mHFc   = wRhPts(mFc,   from, to);
+  // header stats
+  const nowPt = mTPast.length ? mTPast[mTPast.length-1] : (mTFc[0] || null);
+  const localPt = lT.length ? lT[lT.length-1] : null;
+  $("w-src").textContent = localPt
+    ? `${d.local.name || "sensor"} · ${wDeg()}`
+    : `model now · ${wDeg()}`;
+  $("w-src2").innerHTML =
+    `model ${d.model.source} · generated ${wFmtNow(d.model.generated)} · ` +
+    (d.error ? `<span class="err">${d.error}</span>` : `updated ${wFmtNow(d.model.generated)}`);
+  $("w-now").innerHTML = nowPt ? `${fmt(nowPt[1],1)}<span class="u">${wDeg()} model</span>` : "—";
+  $("w-local").innerHTML = localPt ? `${fmt(localPt[1],1)}<span class="u">${wDeg()} local</span>` : "<span class='u'>no local data</span>";
+  $("w-local-lbl").textContent = (d.local && d.local.name) ? d.local.name : "local sensor";
+  $("w-unit").textContent = wDeg();
+  // lanes
+  drawWeatherLane($("w-lane-t"), [
+    {pts: mTPast, color: WCOL.model, dash: false, fill: true},
+    {pts: mTFc,   color: WCOL.forecast, dash: true, fill: false},
+    {pts: lT,     color: WCOL.localT, dash: false, fill: false, dots: true},
+  ], from, to, now, $("w-lext-t"), "°");
+  drawWeatherLane($("w-lane-h"), [
+    {pts: mHPast, color: WCOL.model, dash: false, fill: true},
+    {pts: mHFc,   color: WCOL.forecast, dash: true, fill: false},
+    {pts: lH,     color: WCOL.localH, dash: false, fill: false, dots: true},
+  ], from, to, now, $("w-lext-h"), "%RH");
+  drawXAxis($("w-xaxis"), from, to);
+  const el = $("w-lanes");
+  el.dataset.win = JSON.stringify({from, to, now});
+  el.dataset.fcStart = (mFc.length ? mFc[0].ts : now);
+}
+function drawWeatherLane(c, series, from, to, now, ext, unitLbl){
+  const [ctx,w,h] = setupCanvas(c);
+  ctx.strokeStyle="rgba(255,255,255,.05)"; ctx.lineWidth=1;
+  for(let i=1;i<=3;i++){ const y=h*i/4; ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(w,y); ctx.stroke(); }
+  let all=[], any=false;
+  for(const s of series) for(const p of s.pts) if(p[1]!=null){ all.push(p[1]); any=true; }
+  if(!any){
+    ctx.fillStyle="#7d8a9c"; ctx.font="11px "+getComputedStyle(document.body).fontFamily;
+    ctx.fillText("no data in this range", 12, h/2);
+    if(ext) ext.textContent="";
+    return;
+  }
+  let lo=Math.min(...all), hi=Math.max(...all);
+  const pad=(hi-lo)*0.15||1; lo-=pad; hi+=pad;
+  const x=ts=>(ts-from)/(to-from)*w, y=v=>h-4-((v-lo)/(hi-lo))*(h-8);
+  const path=(pts)=>{ ctx.beginPath(); pts.forEach((p,i)=> i?ctx.lineTo(x(p[0]),y(p[1])):ctx.moveTo(x(p[0]),y(p[1]))); };
+  for(const s of series){
+    if(!s.pts.length) continue;
+    ctx.setLineDash(s.dash ? [5,4] : []);
+    ctx.strokeStyle=s.color; ctx.lineWidth=s.dash?1.4:1.5;
+    path(s.pts); ctx.stroke(); ctx.setLineDash([]);
+    if(s.fill && s.pts.length>1){  // area under hindcast only
+      path(s.pts); ctx.lineTo(x(s.pts[s.pts.length-1][0]),h); ctx.lineTo(x(s.pts[0][0]),h);
+      ctx.closePath(); ctx.fillStyle=s.color+"1f"; ctx.fill();
+    }
+    if(s.dots){
+      ctx.fillStyle=s.color;
+      for(const p of s.pts){ ctx.beginPath(); ctx.arc(x(p[0]),y(p[1]),2.2,0,7); ctx.fill(); }
+    }
+  }
+  // "now" divider
+  if(now>from && now<to){
+    ctx.strokeStyle="rgba(255,255,255,.35)"; ctx.setLineDash([2,3]);
+    ctx.beginPath(); ctx.moveTo(x(now),2); ctx.lineTo(x(now),h-2); ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle="#cfd6e0"; ctx.font="10px "+getComputedStyle(document.body).fontFamily;
+    ctx.textAlign="right"; ctx.fillText("now", x(now)-4, 12);
+  }
+  if(ext){
+    ext.innerHTML = `▲ ${fmt(hi,1)}<br>▼ ${fmt(lo,1)}`;
+  }
+}
+/* hover for the weather lanes — model + local rows */
+function hideWeatherHover(){
+  const ch=$("w-ch"), tip=$("w-tip");
+  if(ch) ch.style.display="none";
+  if(tip) tip.style.display="none";
+}
+function bindWeatherHover(){
+  const lanes=$("w-lanes"); if(!lanes || lanes.dataset.wbind) return;
+  lanes.dataset.wbind="1";
+  const ch=$("w-ch"), tip=$("w-tip");
+  lanes.addEventListener("pointermove", e => {
+    if(!wstate.data || !wstate.data.model || !wstate.data.model.points.length){ hideWeatherHover(); return; }
+    const lr=lanes.getBoundingClientRect();
+    const plot=lanes.querySelector(".wlane canvas");
+    const pr=plot.getBoundingClientRect();
+    const x=e.clientX-pr.left, pw=pr.width;
+    let win={from:0,to:1,now:0};
+    try{ win=JSON.parse(lanes.dataset.win||"null")||win; }catch(_){}
+    if(x<0 || x>pw || win.to-win.from<=0){ hideWeatherHover(); return; }
+    ch.style.display="block";
+    ch.style.left=Math.max(1, Math.min(e.clientX-lr.left, lr.width-2))+"px";
+    const ts = win.from + (x/pw)*(win.to-win.from);
+    const fc = ts > win.now;
+    const m = wstate.data.model.points;
+    const i0 = bisectRows(m, ts);
+    const rows=[];
+    const valT = nearestSample(m, i0, "t_f", ts);
+    const valH = nearestSample(m, i0, "rh", ts);
+    const loc = (wstate.data.local && wstate.data.local.points) || [];
+    const lT = loc.length ? nearestSample(loc, Math.min(i0, loc.length-1), "t_c", ts) : null;
+    const lH = loc.length ? nearestSample(loc, Math.min(i0, loc.length-1), "rh", ts) : null;
+    rows.push(`<div class="tr"><span><span class="td" style="background:${fc?WCOL.forecast:WCOL.model}"></span>model${fc?" (forecast)":""}</span><span>${valT!=null?fmt(wUnit(valT,"F"),1):"—"} ${wDeg()}</span></div>`);
+    rows.push(`<div class="tr"><span style="color:var(--faint)">model RH</span><span>${valH!=null?fmt(valH,0):"—"} %RH</span></div>`);
+    rows.push(`<div class="tr"><span><span class="td" style="background:${WCOL.localT}"></span>${(wstate.data.local&&wstate.data.local.name)||"local"}</span><span>${lT!=null?fmt(wUnit(lT,"C"),1):"—"} ${wDeg()}</span></div>`);
+    rows.push(`<div class="tr"><span><span class="td" style="background:${WCOL.localH}"></span>local RH</span><span>${lH!=null?fmt(lH,0):"—"} %RH</span></div>`);
+    tip.innerHTML=`<div class="tt">${wFmtNow(ts)}${fc?" · forecast":" · now/observed"}</div>${rows.join("")}`;
+    tip.style.display="block";
+    const tw=tip.offsetWidth, th=tip.offsetHeight;
+    const lx=x+14+tw>lr.width ? x-14-tw : x+14;
+    tip.style.left=Math.max(2,lx)+"px";
+    const plotH=lr.height-26;
+    tip.style.top=Math.max(2, Math.min(e.clientY-lr.top+10, plotH-th-2))+"px";
+  });
+  lanes.addEventListener("pointerleave", hideWeatherHover);
+}
+function initWeather(){
+  const sel=$("w-sel");
+  if(!wstate.started){
+    wstate.started = true;
+    sel.onchange = () => { wstate.devId = sel.value || null; loadWeather(); };
+    $("w-unit").onclick = () => { wstate.unit = wstate.unit==="F"?"C":"F"; paintWeather(); };
+    // range buttons
+    const rb = $("w-ranges");
+    rb.innerHTML = WRANGES.map(([k,p,f]) =>
+      `<button class="rbtn${k===wstate.rng[0]?" on":""}" data-k="${k}">${k}</button>`).join("");
+    rb.querySelectorAll(".rbtn").forEach(b => b.onclick = () => {
+      wstate.rng = WRANGES.find(([k])=>k===b.dataset.k);
+      rb.querySelectorAll(".rbtn").forEach(x=>x.classList.toggle("on", x===b));
+      paintWeather();
+    });
+    // legend
+    $("w-legend").innerHTML = `
+      <span class="sw"><i class="solid" style="border-color:${WCOL.model}"></i>model observed</span>
+      <span class="sw"><i class="dash" style="border-color:${WCOL.forecast}"></i>forecast</span>
+      <span class="sw"><i class="solid" style="border-color:${WCOL.localT}"></i>measured temp</span>
+      <span class="sw"><i class="solid" style="border-color:${WCOL.localH}"></i>measured humidity</span>`;
+    bindWeatherHover();
+    wstate.timer = setInterval(loadWeather, 10*60*1000);  // forecast updates ~hourly; server caches 15min
+    addEventListener("resize", () => { if(wstate.data) paintWeather(); });
+  }
+  // sensor dropdown — rebuild when the overview device set changes
+  const sig = state.devices.map(d=>d.device_id+":"+(d.name||"")).join("|");
+  if(sig !== wstate.lastDevSig){
+    wstate.lastDevSig = sig;
+    const prev = wstate.devId;
+    sel.innerHTML = state.devices.map(d=>
+      `<option value="${d.device_id}">${d.name || d.device_id}</option>`).join("");
+    const d0 = state.devices.find(d=>/^shed$/i.test((d.name||"").trim()))
+      || state.devices.find(d=>/shed|garage|backyard|outdoor|patio/i.test(d.name||""));
+    wstate.devId = (prev && state.devices.some(d=>d.device_id===prev)) ? prev
+      : (d0 ? d0.device_id : ((state.devices[0]||{}).device_id||null));
+    sel.value = wstate.devId || "";
+    loadWeather();
+  }
+}
+function refreshWeather(){ initWeather(); }
 
 loadUI();
 $("refreshSel").value = String(state.refreshMs);

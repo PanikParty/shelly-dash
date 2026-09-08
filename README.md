@@ -72,6 +72,14 @@ Key behaviors:
   reading doesn't blank the other lane).
 - Double-click a sensor name to rename it (persisted to the DB, survives
   collector restarts).
+- **Weather & forecast panel** (footer): Open-Meteo model for the property —
+  observed hourly history (solid, filled) back to 14 days, dashed 16-day
+  forecast, with the **Shed / any outdoor sensor measured trace overlaid** as
+  dots so local reality is compared against the model on the same axis.
+  Ranges 48H / 1W / 2W / 4W / ALL, °F ⇄ °C toggle, sensor dropdown (any
+  device — indoor vs outdoor spread), hover crosshair + tooltip. The weather
+  model is fetched by the server (`/api/weather`) and TTL-cached 15 min, so
+  the page never hammers the upstream API.
 - Pause/resume live refresh, refresh interval select (10 s – 5 m),
   blueprint link (`/map`).
 - No auth — keep on a trusted LAN or bind to one interface.
@@ -121,6 +129,7 @@ curl -s http://localhost:8088/api/overview | python3 -m json.tool | head
 | `/api/stats?device=&from=&to=` | per-field min / max / avg / n for one device |
 | `/api/devices/{id}/name` | `POST {"name": "…"}` — persist a friendly label |
 | `/api/export.csv?device=&from=&to=` | ML-ready CSV (`pandas.read_csv` the URL) |
+| `/api/weather?device=&past_days=&forecast_days=` | Open-Meteo model past+forecast (temp °F, RH) + measured overlay for one device; server TTL-cached 15 min |
 | `/` | the dashboard UI (no CDN) |
 | `/map` | property blueprint heatmap |
 
